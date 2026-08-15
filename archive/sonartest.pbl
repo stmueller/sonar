@@ -1,0 +1,274 @@
+## Standalone sonar display test
+## Run as: pebl2 sonartest.pbl
+
+define MakeLowFreqBuffer(x_center, cycles, max_hw, jitter, img_w, img_h)
+{
+    pi2 <- 2 * gPI
+    sine_freq <- pi2 * cycles / img_h
+    ph <- Random() * pi2
+
+    rList <- []
+    gList <- []
+    bList <- []
+    aList <- []
+
+    y <- 0
+    while(y < img_h)
+    {
+        ph <- ph + RandomNormal(0, jitter)
+        hw <- Round(Abs(Sin(y * sine_freq + ph)) * max_hw)
+
+        x <- 0
+        while(x < img_w)
+        {
+            dist <- Abs(x - x_center)
+            if(hw > 0 and dist <= hw)
+            {
+                lev <- Round(100 + 155 * (hw - dist + 1.0) / (hw + 1.0))
+                if(lev > 255) { lev <- 255 }
+                PushOnEnd(gList, lev)
+                PushOnEnd(aList, 255)
+            } else {
+                PushOnEnd(gList, 0)
+                PushOnEnd(aList, 0)
+            }
+            PushOnEnd(rList, 0)
+            PushOnEnd(bList, 0)
+            x <- x + 1
+        }
+        y <- y + 1
+    }
+    return [rList, gList, bList, aList]
+}
+
+
+define MakeHighFreqBuffer(x_center, cycles, max_hw, min_hold, max_hold, img_w, img_h)
+{
+    pi2 <- 2 * gPI
+    sine_freq <- pi2 * cycles / img_h
+    detune <- sine_freq * 0.18
+
+    ph1 <- Random() * pi2
+    ph2 <- Random() * pi2
+    ph3 <- Random() * pi2
+
+    off1 <- -Round(max_hw * 0.5)
+    off2 <-  0
+    off3 <-  Round(max_hw * 0.5)
+
+    on1 <- 1
+    on2 <- 1
+    on3 <- 1
+    hold1 <- Round(min_hold + Random() * (max_hold - min_hold))
+    hold2 <- Round(min_hold + Random() * (max_hold - min_hold))
+    hold3 <- Round(min_hold + Random() * (max_hold - min_hold))
+
+    rList <- []
+    gList <- []
+    bList <- []
+    aList <- []
+
+    y <- 0
+    while(y < img_h)
+    {
+        hw1 <- Round(Abs(Sin(y * sine_freq + ph1)) * max_hw)
+        hw2 <- Round(Abs(Sin(y * (sine_freq + detune) + ph2)) * max_hw)
+        hw3 <- Round(Abs(Sin(y * (sine_freq + detune*2.0) + ph3)) * max_hw)
+
+        hold1 <- hold1 - 1
+        if(hold1 <= 0)
+        {
+            if(on1 == 1) { on1 <- 0 } else { on1 <- 1 }
+            hold1 <- Round(min_hold + Random() * (max_hold - min_hold))
+        }
+        hold2 <- hold2 - 1
+        if(hold2 <= 0)
+        {
+            if(on2 == 1) { on2 <- 0 } else { on2 <- 1 }
+            hold2 <- Round(min_hold + Random() * (max_hold - min_hold))
+        }
+        hold3 <- hold3 - 1
+        if(hold3 <= 0)
+        {
+            if(on3 == 1) { on3 <- 0 } else { on3 <- 1 }
+            hold3 <- Round(min_hold + Random() * (max_hold - min_hold))
+        }
+
+        x <- 0
+        while(x < img_w)
+        {
+            best <- 0.0
+
+            if(on1 == 1 and hw1 > 0)
+            {
+                dist <- Abs(x - (x_center + off1))
+                if(dist <= hw1)
+                {
+                    b <- (hw1 - dist + 1.0) / (hw1 + 1.0)
+                    if(b > best) { best <- b }
+                }
+            }
+            if(on2 == 1 and hw2 > 0)
+            {
+                dist <- Abs(x - (x_center + off2))
+                if(dist <= hw2)
+                {
+                    b <- (hw2 - dist + 1.0) / (hw2 + 1.0)
+                    if(b > best) { best <- b }
+                }
+            }
+            if(on3 == 1 and hw3 > 0)
+            {
+                dist <- Abs(x - (x_center + off3))
+                if(dist <= hw3)
+                {
+                    b <- (hw3 - dist + 1.0) / (hw3 + 1.0)
+                    if(b > best) { best <- b }
+                }
+            }
+
+            if(best > 0)
+            {
+                lev <- Round(80 + 175 * best)
+                if(lev > 255) { lev <- 255 }
+                PushOnEnd(gList, lev)
+                PushOnEnd(aList, 255)
+            } else {
+                PushOnEnd(gList, 0)
+                PushOnEnd(aList, 0)
+            }
+            PushOnEnd(rList, 0)
+            PushOnEnd(bList, 0)
+            x <- x + 1
+        }
+        y <- y + 1
+    }
+    return [rList, gList, bList, aList]
+}
+
+
+define FreqParams(freq_hz, img_h, img_w)
+{
+    t <- (freq_hz - 50.0) / 1700.0
+    if(t < 0) { t <- 0 }
+    if(t > 1) { t <- 1 }
+
+    cycles <- 10.0 - t * 8.0
+    if(cycles < 2) { cycles <- 2 }
+
+    max_hw <- Round(img_w/2 * (0.80 - t * 0.60))
+    if(max_hw < 4) { max_hw <- 4 }
+
+    mode <- 0
+    p4 <- 0.4
+    p5 <- 0
+
+    if(freq_hz > 400)
+    {
+        mode <- 1
+        p4 <- Round(3 + (1.0 - t) * 15)
+        p5 <- p4 * 3
+    }
+
+    return [cycles, max_hw, mode, p4, p5]
+}
+
+
+define MakeSonarDisplay(signature, win, zoom, disp_y)
+{
+    bg_w <- 2000
+    bg_h <- 1000
+    stripe_native_w <- 80
+    row_h    <- 291
+    row1_top <- 60
+    row2_top <- 381
+    row3_top <- 702
+    content_left <- 50
+    content_w    <- 1950
+    row1_lo <- 0;   row1_hi <- 250
+    row2_lo <- 250; row2_hi <- 750
+    row3_lo <- 750; row3_hi <- 1750
+
+    bg_screen_left <- Round(gVideoWidth/2 - bg_w * zoom / 2.0)
+    bg_screen_top  <- Round(disp_y        - bg_h * zoom / 2.0)
+
+    img_w <- Round(stripe_native_w * zoom)
+    img_h <- Round(row_h * zoom)
+    if(img_w < 6) { img_w <- 6 }
+    if(img_h < 6) { img_h <- 6 }
+
+    xc <- Round(img_w / 2)
+    imgs <- []
+
+    loop(freq, signature)
+    {
+        row_top <- 0
+        freq_lo <- 0
+        freq_hi <- 1
+        in_row  <- 0
+
+        if(freq >= row1_lo and freq < row1_hi)
+        {
+            row_top <- row1_top; freq_lo <- row1_lo; freq_hi <- row1_hi; in_row <- 1
+        }
+        if(freq >= row2_lo and freq < row2_hi)
+        {
+            row_top <- row2_top; freq_lo <- row2_lo; freq_hi <- row2_hi; in_row <- 1
+        }
+        if(freq >= row3_lo and freq <= row3_hi)
+        {
+            row_top <- row3_top; freq_lo <- row3_lo; freq_hi <- row3_hi; in_row <- 1
+        }
+
+        if(in_row == 1)
+        {
+            freq_x_native <- content_left + Round((freq - freq_lo) / (freq_hi - freq_lo) * content_w)
+            screen_x <- bg_screen_left + Round(freq_x_native * zoom)
+            screen_y <- bg_screen_top  + Round((row_top + row_h / 2) * zoom)
+
+            params <- FreqParams(freq, img_h, img_w)
+            cyc  <- Nth(params, 1)
+            mhw  <- Nth(params, 2)
+            mode <- Nth(params, 3)
+            p4   <- Nth(params, 4)
+            p5   <- Nth(params, 5)
+
+            if(mode == 0)
+            {
+                buf <- MakeLowFreqBuffer(xc, cyc, mhw, p4, img_w, img_h)
+            } else {
+                buf <- MakeHighFreqBuffer(xc, cyc, mhw, p4, p5, img_w, img_h)
+            }
+
+            img <- MakeImage(img_w, img_h, MakeColorRGB(0,0,0))
+            AddObject(img, win)
+            Move(img, screen_x, screen_y)
+            SetPixelsRGBA(img, Nth(buf,1), Nth(buf,2), Nth(buf,3), Nth(buf,4))
+            PushOnEnd(imgs, img)
+        }
+    }
+
+    return imgs
+}
+
+
+define Start(p)
+{
+    gPI <- ACos(-1)
+    gWin <- MakeWindow("black")
+
+    zoom   <- gVideoWidth / 2000.0 * 0.5
+    disp_y <- Round(gVideoHeight * 0.35)
+
+    bg <- MakeImage("img/waterfall_bg.png")
+    AddObject(bg, gWin)
+    bg.zoomx <- zoom
+    bg.zoomy <- zoom
+    Move(bg, Round(gVideoWidth/2), disp_y)
+
+    signature <- [60, 125, 275, 1100, 1450]
+    imgs <- MakeSonarDisplay(signature, gWin, zoom, disp_y)
+
+    Draw()
+    WaitForAnyKeyPress()
+}

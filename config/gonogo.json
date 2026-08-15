@@ -1,0 +1,47 @@
+{
+  "task_id": "gonogo",
+  "display": "narrowband",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Shchuka-B",
+      "sig": [50, 125, 340, 1200, 1541]
+    },
+    {
+      "id": 2,
+      "name": "Kilo-877",
+      "sig": [40, 135, 320, 1100, 1490]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "practice",
+      "label": "Practice",
+      "instructions": "<h3=center>Go / No-Go Practice</h3>A vessel contact will appear on every trial.<li><b>Click anywhere</b> when you see the <b>Shchuka-B</b> (target)<li><b>Do nothing</b> when you see the <b>Kilo-877</b> (non-target)<li>Vessels appear with equal frequency — stay focused on the pattern<li>You have <b>1 second</b> to respond<li>Feedback will tell you if you were correct",
+      "trials": 20,
+      "base_rate": 0.5,
+      "response_mode": "gonogo",
+      "gonogo_go_vessel": 1,
+      "gonogo_response_window": 1000,
+      "signal_mode": "clean",
+      "signal_params": { "jitter_sd": 10, "n_noise_min": 1, "n_noise_max": 1 },
+      "feedback": "accuracy",
+      "isi": 800
+    },
+    {
+      "id": "main",
+      "label": "Main Task",
+      "instructions": "<h3=center>Go / No-Go</h3>Continue responding to <b>Shchuka-B only</b>.<li>Signals now have noise bands added — stay focused on the pattern<li>No feedback in this block",
+      "trials": 60,
+      "base_rate": 0.5,
+      "response_mode": "gonogo",
+      "gonogo_go_vessel": 1,
+      "gonogo_response_window": 1000,
+      "signal_mode": "noisy",
+      "signal_params": { "jitter_sd": 10, "n_noise_min": 1, "n_noise_max": 2 },
+      "feedback": "none",
+      "isi": 1000
+    }
+  ]
+}

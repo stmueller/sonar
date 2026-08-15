@@ -1,0 +1,43 @@
+{
+  "task_id": "2afc",
+  "display": "narrowband",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Shchuka-B",
+      "sig": [50, 125, 340, 1200, 1541]
+    },
+    {
+      "id": 2,
+      "name": "Kilo-877",
+      "sig": [40, 135, 320, 1100, 1490]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "practice",
+      "label": "Practice",
+      "instructions": "<h3=center>Vessel Identification — Practice</h3>On each trial an acoustic signature appears on the display.<li>Click the matching vessel thumbnail at the bottom of the screen.<li>After your response, rate your confidence on a 1–4 scale.<li>Feedback will follow each trial.",
+      "trials": 20,
+      "base_rate": 0.5,
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 8 },
+      "feedback": "accuracy",
+      "collect_confidence": 1,
+      "isi": 800
+    },
+    {
+      "id": "main",
+      "label": "Main Task",
+      "instructions": "<h3=center>Vessel Identification</h3>Identify each vessel from its acoustic signature. Click the matching thumbnail, then rate your confidence.<li>No feedback in this block.",
+      "trials": 100,
+      "base_rate": 0.5,
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 8 },
+      "feedback": "none",
+      "collect_confidence": 1,
+      "isi": 600
+    }
+  ]
+}

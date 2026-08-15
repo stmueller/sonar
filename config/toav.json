@@ -1,0 +1,47 @@
+{
+  "task_id": "toav",
+  "display": "heading",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Port",
+      "sig": [90, 8]
+    },
+    {
+      "id": 2,
+      "name": "Starboard",
+      "sig": [270, 8]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "practice",
+      "label": "Practice",
+      "instructions": "<h3=center>Bearing Watch — Practice</h3>A contact will appear on the bearing display on each trial.<li><b>Click</b> when you detect the <b>Port contact</b> (left side, ~90°)<li><b>Do nothing</b> for the <b>Starboard contact</b> (right side, ~270°)<li>Both contacts appear equally often<li>You have <b>1 second</b> to respond<li>Feedback will tell you if you were correct",
+      "trials": 20,
+      "base_rate": 0.5,
+      "response_mode": "gonogo",
+      "gonogo_go_vessel": 1,
+      "gonogo_response_window": 1000,
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 5 },
+      "feedback": "accuracy",
+      "isi": 800
+    },
+    {
+      "id": "main",
+      "label": "Main Task",
+      "instructions": "<h3=center>Bearing Watch</h3>Continue responding to Port contacts only.<li>Port contacts are now less frequent — stay alert<li>No feedback in this block",
+      "trials": 80,
+      "base_rate": 0.2,
+      "response_mode": "gonogo",
+      "gonogo_go_vessel": 1,
+      "gonogo_response_window": 1000,
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 8 },
+      "feedback": "none",
+      "isi": 1000
+    }
+  ]
+}

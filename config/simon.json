@@ -1,0 +1,49 @@
+{
+  "task_id": "simon",
+  "display": "heading",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Mechanical",
+      "sig": [90, 8],
+      "contact_type": "solid",
+      "response_side": "left",
+      "bearings": [60, 75, 90, 105, 120, 240, 255, 270, 285, 300]
+    },
+    {
+      "id": 2,
+      "name": "Biological",
+      "sig": [270, 8],
+      "contact_type": "noisy",
+      "response_side": "right",
+      "bearings": [60, 75, 90, 105, 120, 240, 255, 270, 285, 300]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "practice",
+      "label": "Practice",
+      "instructions": "<h3=center>Simon Task — Practice</h3>Two vessel types appear on the bearing display.<li><b>Alpha</b> contact: always click the <b>LEFT</b> half of the screen<li><b>Bravo</b> contact: always click the <b>RIGHT</b> half of the screen<li>Respond based on vessel identity — <b>ignore where it appears</b><li>Respond as quickly as possible<li>Feedback will tell you if you were correct",
+      "trials": 20,
+      "base_rate": 0.5,
+      "response_mode": "simon",
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 3 },
+      "feedback": "accuracy",
+      "isi": 800
+    },
+    {
+      "id": "main",
+      "label": "Main Task",
+      "instructions": "<h3=center>Simon Task</h3>Continue: <b>Alpha → LEFT</b>, <b>Bravo → RIGHT</b>.<li>Respond based on vessel identity — ignore bearing position<li>No feedback in this block",
+      "trials": 120,
+      "base_rate": 0.5,
+      "response_mode": "simon",
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 3 },
+      "feedback": "none",
+      "isi": 600
+    }
+  ]
+}

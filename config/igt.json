@@ -1,0 +1,59 @@
+{
+  "task_id": "igt",
+  "display": "heading",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Sector A",
+      "sig": [45, 8],
+      "contact_type": "noisy",
+      "payoff_mean": 100,
+      "payoff_sd": 5,
+      "loss_prob": 0.5,
+      "loss_amount": 250
+    },
+    {
+      "id": 2,
+      "name": "Sector B",
+      "sig": [135, 8],
+      "contact_type": "solid",
+      "payoff_mean": 100,
+      "payoff_sd": 5,
+      "loss_prob": 0.1,
+      "loss_amount": 1250
+    },
+    {
+      "id": 3,
+      "name": "Sector C",
+      "sig": [225, 8],
+      "contact_type": "noisy",
+      "payoff_mean": 50,
+      "payoff_sd": 5,
+      "loss_prob": 0.5,
+      "loss_amount": 50
+    },
+    {
+      "id": 4,
+      "name": "Sector D",
+      "sig": [315, 8],
+      "contact_type": "solid",
+      "payoff_mean": 50,
+      "payoff_sd": 5,
+      "loss_prob": 0.1,
+      "loss_amount": 250
+    }
+  ],
+  "blocks": [
+    {
+      "id": "main",
+      "label": "Sector Patrol",
+      "instructions": "<h3=center>Sector Patrol</h3>Four patrol sectors are available. Each shift, choose a sector to monitor.<li>Each sector yields intelligence contacts (points), but some sectors carry occasional <b>incident costs</b> — equipment issues, false escalations, or interference from rough conditions.<li>You start with 2000 pts. Learn which sectors are worth patrolling over time.<li>There are no right or wrong answers — just try to finish with as many points as possible.",
+      "trials": 100,
+      "response_mode": "bandit",
+      "feedback": "payoff",
+      "starting_score": 2000,
+      "isi": 500
+    }
+  ]
+}

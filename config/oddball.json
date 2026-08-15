@@ -1,0 +1,49 @@
+{
+  "task_id": "oddball",
+  "display": "heading",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Mechanical",
+      "sig": [90, 8],
+      "contact_type": "solid",
+      "response_side": "left",
+      "bearings": [70, 80, 90, 100, 110, 75, 85, 95, 105, 270]
+    },
+    {
+      "id": 2,
+      "name": "Biological",
+      "sig": [270, 8],
+      "contact_type": "noisy",
+      "response_side": "right",
+      "bearings": [250, 260, 270, 280, 290, 255, 265, 275, 285, 90]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "practice",
+      "label": "Practice",
+      "instructions": "<h3=center>Contact Classification — Practice</h3>Contacts appear on the bearing display.<li><b>Mechanical</b> contact: click the <b>LEFT</b> half of the screen<li><b>Biological</b> contact: click the <b>RIGHT</b> half of the screen<li>Respond based on contact type — ignore where it appears on the display<li>Most contacts appear on the expected side; occasional contacts appear on the opposite side<li>Respond as quickly and accurately as possible",
+      "trials": 20,
+      "base_rate": 0.5,
+      "response_mode": "simon",
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 3 },
+      "feedback": "accuracy",
+      "isi": 1000
+    },
+    {
+      "id": "main",
+      "label": "Main Task",
+      "instructions": "<h3=center>Contact Classification</h3>Mechanical → LEFT. Biological → RIGHT.<li>Respond based on contact type regardless of where it appears.<li>No feedback in this block.",
+      "trials": 120,
+      "base_rate": 0.5,
+      "response_mode": "simon",
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 3 },
+      "feedback": "none",
+      "isi": 800
+    }
+  ]
+}

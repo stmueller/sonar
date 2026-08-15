@@ -1,0 +1,50 @@
+{
+  "task_id": "prob-reversal",
+  "display": "narrowband",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Alpha",
+      "sig": [80, 200, 500, 900, 1400]
+    },
+    {
+      "id": 2,
+      "name": "Bravo",
+      "sig": [60, 300, 650, 1100, 1600]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "acquire",
+      "label": "Acquisition",
+      "instructions": "<h3=center>Vessel Identification</h3>Learn to identify the two vessels.<li>Feedback is <b>not always reliable</b> — the sonar environment adds noise<li>Try to learn which vessel is which despite occasional misleading feedback",
+      "trials": 30,
+      "show_thumbnails": 0,
+      "base_rate": 0.5,
+      "response_mode": "choice",
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 10 },
+      "feedback": "accuracy",
+      "p_flip_feedback": 0.2,
+      "isi": 800
+    },
+    {
+      "id": "reversal",
+      "label": "Reversal",
+      "instructions": "<h3=center>Continue — Rules May Change</h3>Continue identifying vessels.<li>Feedback remains noisy — about 20% of feedback is unreliable<li>The correct identification may also change during this block<li>Track patterns across multiple trials, not just the last one",
+      "trials": 200,
+      "base_rate": 0.5,
+      "response_mode": "reversal",
+      "correct_vessel": 1,
+      "reversal_criterion": 10,
+      "reversal_max": 4,
+      "show_thumbnails": 0,
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 10 },
+      "feedback": "accuracy",
+      "p_flip_feedback": 0.2,
+      "isi": 800
+    }
+  ]
+}

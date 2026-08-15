@@ -1,0 +1,52 @@
+{
+  "task_id": "noise-tolerance",
+  "display": "narrowband",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Alpha",
+      "sig": [80, 200, 500, 900, 1400]
+    },
+    {
+      "id": 2,
+      "name": "Bravo",
+      "sig": [60, 300, 650, 1100, 1600]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "learn",
+      "label": "Learning Phase",
+      "instructions": "<h3=center>Learning Phase</h3>Learn to identify the two vessels from their acoustic signatures.<li>Feedback tells you correct or incorrect after each response<li>Pay attention — the correct vessel may change without warning",
+      "trials": 15,
+      "base_rate": 0.5,
+      "signal_mode": "clean",
+      "signal_params": { "jitter_sd": 15, "n_noise_min": 1, "n_noise_max": 1 },
+      "feedback": "accuracy",
+      "isi": 800
+    },
+    {
+      "id": "noisy-learn",
+      "label": "Noisy Signals",
+      "instructions": "<h3=center>Noisy Signals</h3>Now signals have extra noise bands added — the vessel's true bands are still present.<li>Use all visible evidence<li>Feedback continues",
+      "trials": 20,
+      "base_rate": 0.5,
+      "signal_mode": "noisy",
+      "signal_params": { "jitter_sd": 15, "n_noise_min": 1, "n_noise_max": 3 },
+      "feedback": "accuracy",
+      "isi": 800
+    },
+    {
+      "id": "prob",
+      "label": "Intermittent Signals",
+      "instructions": "<h3=center>Intermittent Signals</h3>Now each frequency band only appears with <b>70% probability</b> on each trial.<li>You may see only 3-4 bands — use the overall pattern<li>No feedback in this block",
+      "trials": 20,
+      "base_rate": 0.5,
+      "signal_mode": "prob",
+      "signal_params": { "jitter_sd": 15, "n_noise_min": 1, "n_noise_max": 2, "p_show": 0.70 },
+      "feedback": "none",
+      "isi": 800
+    }
+  ]
+}

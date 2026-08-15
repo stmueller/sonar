@@ -1,0 +1,49 @@
+{
+  "task_id": "gain-loss",
+  "display": "narrowband",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Alpha",
+      "sig": [50, 125, 340, 1200, 1541]
+    },
+    {
+      "id": 2,
+      "name": "Bravo",
+      "sig": [40, 135, 320, 1100, 1490]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "gain",
+      "label": "Gain Frame",
+      "instructions": "<h3=center>Contact Identification — Gain Frame</h3>Identify each acoustic contact. You start with 0 points.<li>Correct identification: <b>+10 pts</b><li>Incorrect identification: <b>+0 pts</b><li>Maximize your score.",
+      "trials": 60,
+      "base_rate": 0.5,
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 15 },
+      "feedback": "payoff",
+      "payoff_hit": 10,
+      "payoff_miss": 0,
+      "payoff_fa": 0,
+      "payoff_cr": 10,
+      "isi": 800
+    },
+    {
+      "id": "loss",
+      "label": "Loss Frame",
+      "instructions": "<h3=center>Contact Identification — Loss Frame</h3>Identify each acoustic contact. You start with 1200 points.<li>Correct identification: <b>-0 pts</b><li>Incorrect identification: <b>-10 pts</b><li>Protect your score.",
+      "trials": 60,
+      "base_rate": 0.5,
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 15 },
+      "feedback": "payoff",
+      "payoff_hit": 0,
+      "payoff_miss": -10,
+      "payoff_fa": -10,
+      "payoff_cr": 0,
+      "isi": 800
+    }
+  ]
+}

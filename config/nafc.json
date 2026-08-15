@@ -1,0 +1,48 @@
+{
+  "task_id": "nafc",
+  "display": "narrowband",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Shchuka-B",
+      "sig": [80, 210, 560, 950, 1320]
+    },
+    {
+      "id": 2,
+      "name": "Kilo-877A",
+      "sig": [40, 135, 320, 1100, 1490]
+    },
+    {
+      "id": 3,
+      "name": "Kilo-877B",
+      "sig": [40, 135, 380, 1100, 1560]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "practice",
+      "label": "Practice",
+      "instructions": "<h3=center>3-Alternative Classification — Practice</h3>Three vessel types are possible on each trial.<li><b>Kilo-877A</b> and <b>Kilo-877B</b> are sister vessels with similar signatures — distinguish them carefully.<li>Study the three thumbnail signatures at the bottom of the screen.<li>Click the matching vessel thumbnail after viewing the acoustic signature.<li>Feedback will follow each trial.",
+      "trials": 30,
+      "base_rate": 0.5,
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 8 },
+      "feedback": "accuracy",
+      "collect_confidence": 1,
+      "isi": 800
+    },
+    {
+      "id": "main",
+      "label": "Main Task",
+      "instructions": "<h3=center>3-Alternative Classification</h3>Identify the vessel from its acoustic signature. Kilo-877A and Kilo-877B have similar signatures — attend to the differences.<li>Click the matching thumbnail, then rate your confidence. No feedback in this block.",
+      "trials": 120,
+      "base_rate": 0.5,
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 8 },
+      "feedback": "none",
+      "collect_confidence": 1,
+      "isi": 600
+    }
+  ]
+}

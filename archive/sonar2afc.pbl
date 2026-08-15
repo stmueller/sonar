@@ -1,0 +1,776 @@
+## Sonar 2-AFC task
+## Vessels: 1=Shchuka-B  2=Kilo-877
+## Base rate controlled by gBaseRate (prob of vessel 1 on each trial)
+## Response: key 1 = Shchuka-B, key 2 = Kilo-877
+
+## Look up a cached stripe PNG for a given frequency and row number.
+## Rounds freq to nearest 40Hz cache step, picks a random variant 0-7.
+define StripeFilename(row_num)
+{
+    v <- Round(Random() * 7)
+    vstr <- "" + v
+    if(v < 10) { vstr <- "0" + v }
+    return "img/stripes/stripe_r" + row_num + "_v" + vstr + ".png"
+}
+
+
+define MakeSonarDisplay(signature, win, zoom, disp_y)
+{
+    bg_w  <- 2000
+    bg_h  <- 1000
+    ## Stripe native dimensions match the pre-rendered PNGs: 80w x 283h
+    stripe_native_w <- 80
+    stripe_native_h <- 283    ## STRIPE_H = ROW_H(291) - BORDER_TOP(5) - BORDER_BOT(3)
+    row_h    <- 291
+    row1_top <- 60
+    row2_top <- 381
+    row3_top <- 702
+    content_left <- 50
+    content_w    <- 1950
+    row1_lo <- 0;   row1_hi <- 250
+    row2_lo <- 250; row2_hi <- 750
+    row3_lo <- 750; row3_hi <- 1750
+
+    bg_screen_left <- Round(gVideoWidth/2 - bg_w * zoom / 2.0)
+    bg_screen_top  <- Round(disp_y        - bg_h * zoom / 2.0)
+
+    img_w <- Round(stripe_native_w * zoom)
+    img_h <- Round(stripe_native_h * zoom)
+
+    imgs <- []
+
+    loop(freq, signature)
+    {
+        row_top <- 0
+        row_num <- 0
+        freq_lo <- 0
+        freq_hi <- 1
+        in_row  <- 0
+
+        if(freq >= row1_lo and freq < row1_hi)
+        {
+            row_top <- row1_top; row_num <- 1
+            freq_lo <- row1_lo; freq_hi <- row1_hi; in_row <- 1
+        }
+        if(freq >= row2_lo and freq < row2_hi)
+        {
+            row_top <- row2_top; row_num <- 2
+            freq_lo <- row2_lo; freq_hi <- row2_hi; in_row <- 1
+        }
+        if(freq >= row3_lo and freq <= row3_hi)
+        {
+            row_top <- row3_top; row_num <- 3
+            freq_lo <- row3_lo; freq_hi <- row3_hi; in_row <- 1
+        }
+
+        if(in_row == 1)
+        {
+            freq_x_native <- content_left + Round((freq - freq_lo) / (freq_hi - freq_lo) * content_w)
+            screen_x <- bg_screen_left + Round(freq_x_native * zoom)
+            screen_y <- bg_screen_top  + Round((row_top + 5 + stripe_native_h / 2) * zoom)
+
+            fname <- StripeFilename(row_num)
+            img <- MakeImage(fname)
+            img.zoomx <- zoom * gStripeStretch
+            img.zoomy <- zoom
+            AddObject(img, win)
+            Move(img, screen_x, screen_y)
+            PushOnEnd(imgs, img)
+        }
+    }
+
+    return imgs
+}
+
+
+define RemoveSonarDisplay(imgs, win)
+{
+    loop(img, imgs)
+    {
+        RemoveObject(img, win)
+    }
+}
+
+
+define ShowFeedback(correct, win, font, fb_y)
+{
+    if(correct == 1)
+    {
+        msg <- MakeLabel("CORRECT", font)
+    } else {
+        msg <- MakeLabel("INCORRECT", font)
+    }
+    AddObject(msg, win)
+    Move(msg, Round(gVideoWidth/2), fb_y)
+    Draw()
+    Wait(600)
+    RemoveObject(msg, win)
+    return 1
+}
+
+
+## Return a fresh copy of a list (PEBL lists are references; assignment aliases, not copies).
+define CopyList(lst)
+{
+    out <- []
+    loop(x, lst) { PushOnEnd(out, x) }
+    return out
+}
+
+
+## Jitter each band by Gaussian noise with given SD (Hz), clamped to valid range.
+define MakeJitteredSig(baseSig, sd)
+{
+    sig <- []
+    loop(f, baseSig)
+    {
+        jf <- Round(f + RandomNormal(0, sd))
+        if(jf < 50)   { jf <- 50 }
+        if(jf > 1750) { jf <- 1750 }
+        PushOnEnd(sig, jf)
+    }
+    return sig
+}
+
+
+## Add 5-10 random noise bands to a base signature.
+## Noise bands drawn from full sonar range (50-1750 Hz), avoiding existing frequencies.
+define MakeNoisySig(baseSig)
+{
+    nNoise <- Round(1 + Random())   ## 1-2 extra bands
+    sig    <- CopyList(baseSig)
+    added  <- 0
+    tries  <- 0
+
+    while(added < nNoise and tries < 200)
+    {
+        tries <- tries + 1
+        ## Random frequency in range 50-1750
+        f <- Round(50 + Random() * 1700)
+
+        ## Check not too close to an existing band (within 30 Hz)
+        tooClose <- 0
+        loop(existing, sig)
+        {
+            if(Abs(f - existing) < 30) { tooClose <- 1 }
+        }
+
+        if(tooClose == 0)
+        {
+            PushOnEnd(sig, f)
+            added <- added + 1
+        }
+    }
+    return sig
+}
+
+
+## Add 1-2 bands from the alternative vessel plus random noise bands.
+## altSig: the OTHER vessel's profile to borrow from.
+define MakeMimicSig(baseSig, altSig)
+{
+    sig <- CopyList(baseSig)
+
+    ## Pick 1 or 2 bands from the alternative vessel
+    nMimic <- Round(1 + Random())    ## 1 or 2
+    added  <- 0
+    tries  <- 0
+
+    while(added < nMimic and tries < 50)
+    {
+        tries <- tries + 1
+        idx   <- Round(1 + Random() * (Length(altSig) - 1))
+        f     <- Nth(altSig, idx)
+
+        tooClose <- 0
+        loop(existing, sig)
+        {
+            if(Abs(f - existing) < 30) { tooClose <- 1 }
+        }
+
+        if(tooClose == 0)
+        {
+            PushOnEnd(sig, f)
+            added <- added + 1
+        }
+    }
+
+    ## Fill out with 1-2 random noise bands on top of mimic bands
+    nNoise <- Round(1 + Random()) - added
+    if(nNoise < 0) { nNoise <- 0 }
+    added2 <- 0
+    tries  <- 0
+    while(added2 < nNoise and tries < 200)
+    {
+        tries <- tries + 1
+        f <- Round(50 + Random() * 1700)
+        tooClose <- 0
+        loop(existing, sig)
+        {
+            if(Abs(f - existing) < 30) { tooClose <- 1 }
+        }
+        if(tooClose == 0)
+        {
+            PushOnEnd(sig, f)
+            added2 <- added2 + 1
+        }
+    }
+    return sig
+}
+
+
+## Build a probabilistic signature: each band from baseSig shown with probability p_show.
+## Fills remaining slots with random bands to keep total count similar.
+define MakeProbSig(baseSig, p_show)
+{
+    sig <- []
+    loop(f, baseSig)
+    {
+        if(Random() < p_show) { PushOnEnd(sig, f) }
+    }
+
+    ## Add 1-2 random bands regardless
+    nRandom <- Round(1 + Random())
+    added <- 0
+    tries <- 0
+    while(added < nRandom and tries < 200)
+    {
+        tries <- tries + 1
+        f <- Round(50 + Random() * 1700)
+        tooClose <- 0
+        loop(existing, sig)
+        {
+            if(Abs(f - existing) < 30) { tooClose <- 1 }
+        }
+        if(tooClose == 0)
+        {
+            PushOnEnd(sig, f)
+            added <- added + 1
+        }
+    }
+
+    ## Ensure at least one band shows (degenerate guard)
+    if(Length(sig) == 0)
+    {
+        PushOnEnd(sig, Nth(baseSig, 1))
+    }
+    return sig
+}
+
+
+## Count how many bands in sig are also in baseSig (within 5 Hz tolerance).
+define CountMatches(sig, baseSig)
+{
+    n <- 0
+    loop(f, sig)
+    {
+        loop(b, baseSig)
+        {
+            if(Abs(f - b) < 5) { n <- n + 1 }
+        }
+    }
+    return n
+}
+
+
+## Serialize a list of frequencies as a semicolon-delimited string.
+define SigToStr(sig)
+{
+    s <- ""
+    first <- 1
+    loop(f, sig)
+    {
+        if(first == 1)
+        {
+            s <- "" + f
+            first <- 0
+        } else {
+            s <- s + ";" + f
+        }
+    }
+    return s
+}
+
+define VesselName(v)
+{
+    if(v == 1) { name <- "shchuka" } else { name <- "kilo" }
+    return name
+}
+
+
+## Show instruction screen with formatted text. Click either thumbnail to proceed.
+define ShowInstructions(instrText, win, fontSmall, btn1, btn2, clickLbl)
+{
+    tb_w  <- Round(gVideoWidth * 0.6)
+    tb_h  <- Round(gVideoHeight * 0.12)
+    tb_x  <- Round(gVideoWidth * 0.20)
+    tb_y  <- Round(gVideoHeight * 0.02)
+
+    tb <- EasyTextBox(instrText, tb_x, tb_y, win, 14, tb_w, tb_h)
+    SetProperty(tb, "FORMATTED", 1)
+
+    AddObject(clickLbl, win)
+    Move(clickLbl, Round(gVideoWidth/2), Round(tb_y + tb_h + 20))
+
+    Draw()
+    WaitForClickOnTarget([clickLbl], [1])
+
+    RemoveObject(tb, win)
+    RemoveObject(clickLbl, win)
+    return 1
+}
+
+
+define Start(p)
+{
+    gPI <- ACos(-1)
+
+    ## --- Upload / subject setup ---
+    InitializeUpload()
+    gWin <- MakeWindow("black")
+
+    if(gSubNum + "" == "0")
+    {
+        gSubNum <- GetSubNum(gWin)
+    }
+
+    ## --- Audio on/off (set to 0 to disable) ---
+    gUseAudio <- 0
+
+    ## --- Task parameters ---
+    numTrials   <- 10        ## trials per round
+    gBaseRate   <- 0.5       ## P(vessel 1 = Shchuka-B)
+
+    ## --- Sounds ---
+    if(gUseAudio == 1)
+    {
+        sndV1   <- LoadSound("sounds/sub_nuke.ogg")    ## Shchuka-B (nuclear sub)
+        sndV2   <- LoadSound("sounds/sub_diesel.ogg")  ## Kilo-877 (diesel sub)
+        sndBgnd <- LoadSound("sounds/bgnd.ogg")
+        SetPlayRepeats(sndBgnd, -1)   ## loop background indefinitely
+        PlayBackground(sndBgnd)
+    }
+
+
+
+   
+    ## Vessel profiles
+    sig1 <- [50, 125, 340, 1200, 1541]   ## Sub Mark 1
+    sig2 <- [40, 135, 320, 1100, 1490]   ## Sub Mark 2
+    sig3 <- [75, 200, 500, 1000, 1700]   ## schooner
+    
+    ## Display zooms
+    zoom  <- gVideoWidth / 2000.0 * 0.5
+
+    ## Stripe horizontal stretch: >1 makes bands wider/more visible
+    gStripeStretch <- 4.0
+
+    ## Fonts
+    fontLarge <- MakeFont(gPEBLBaseFont", 0, 28, MakeColor("white"),  MakeColor("black"), 1)
+    fontSmall <- MakeFont(gPEBLBaseFont, 0, 24, MakeColor("white"),  MakeColor("black"), 1)
+    fontFB    <- MakeFont(gPEBLBaseFont, 0, 32, MakeColor("yellow"), MakeColor("black"), 1)
+    fontLbl   <- MakeFont(gPEBLBaseFont, 0, 20, MakeColor("white"),  MakeColor("black"), 1)
+
+    ## --- Layout constants ---
+    bg_h_scaled <- Round(1000 * zoom)
+    disp_y      <- Round(gVideoHeight * 0.38) + 50
+    fb_y        <- disp_y + Round(bg_h_scaled / 2) + 35
+    offscreen_x <- -3000
+
+    ## Thumbnail layout: bottom-left and bottom-right
+    ## Pre-composited thumbnails are 240x120; scale to ~12.5% screen width (1:1 at 1920px)
+    thumb_native_w <- 240
+    thumb_native_h <- 120
+    tbg_w   <- Round(gVideoWidth * 0.125)
+    tzoom_x <- tbg_w / thumb_native_w
+    tbg_h   <- Round(thumb_native_h * tzoom_x)
+    thumb_y   <- Round(gVideoHeight * 0.82)
+    thumb1_x  <- Round(gVideoWidth * 0.22)
+    thumb2_x  <- Round(gVideoWidth * 0.78)
+    btn_h     <- 28
+    btn_y     <- thumb_y + Round(tbg_h / 2) + btn_h
+
+    ## --- Pre-load noise overlays (behind main bg, offscreen to start) ---
+    noiseImgs <- []
+    noiseIdx <- 0
+    while(noiseIdx < 20)
+    {
+        if(noiseIdx < 10)
+        {
+            npath <- "img/waterfall_noise_0" + noiseIdx + ".jpg"
+        } else {
+            npath <- "img/waterfall_noise_" + noiseIdx + ".jpg"
+        }
+        nimg <- MakeImage(npath)
+        nimg.zoomx <- zoom
+        nimg.zoomy <- zoom
+        AddObject(nimg, gWin)
+        Move(nimg, offscreen_x, disp_y)
+        PushOnEnd(noiseImgs, nimg)
+        noiseIdx <- noiseIdx + 1
+    }
+
+    ## --- Main background UI ---
+    bg <- MakeImage("img/waterfall_bg.png")
+    AddObject(bg, gWin)
+    bg.zoomx <- zoom
+    bg.zoomy <- zoom
+    Move(bg, Round(gVideoWidth/2), disp_y)
+
+    ## --- Pre-composited thumbnails (bg + stripes, no noise) ---
+    tbg1 <- MakeImage("img/thumbnails/thumb_v1.png")
+    tbg1.zoomx <- tzoom_x
+    tbg1.zoomy <- tzoom_x
+    AddObject(tbg1, gWin)
+    Move(tbg1, thumb1_x, thumb_y)
+
+    tbg2 <- MakeImage("img/thumbnails/thumb_v2.png")
+    tbg2.zoomx <- tzoom_x
+    tbg2.zoomy <- tzoom_x
+    AddObject(tbg2, gWin)
+    Move(tbg2, thumb2_x, thumb_y)
+
+    ## Click targets are the thumbnail images themselves
+    btn1 <- tbg1
+    btn2 <- tbg2
+
+    ## --- Labels under thumbnails ---
+    lbl1 <- MakeLabel("Shchuka-B", fontLbl)
+    AddObject(lbl1, gWin)
+    Move(lbl1, thumb1_x, btn_y)
+
+    lbl2 <- MakeLabel("Kilo-877", fontLbl)
+    AddObject(lbl2, gWin)
+    Move(lbl2, thumb2_x, btn_y)
+
+    ## Click-to-begin prompt (reused across instruction screens)
+    clickLbl <- MakeLabel("[ Click here to begin ]", fontSmall)
+
+    ## --- Data file ---
+    dataHeader <- "subnum,round,condition,trial,vessel,response,correct,targetID,responseID,abstime,rt_ms,base_sig,actual_sig,n_shown,n_extra,n_missing"
+    dataFile <- GetNewDataFile(gSubNum, gWin, "sonar2afc", "csv", dataHeader)
+
+    ## ============================================================
+    ## ROUND 1: basic identification
+    ## ============================================================
+    instrText <- "<h3=center>Round 1: Vessel Identification</h3>" + CR(1) +
+        "On each trial, identify the unknown vessel by clicking its signature below." + CR(1) +
+        "<li>All <b>5 characteristic frequency bands</b> are visible" + CR(1) +
+        "<li>Study the thumbnail signatures at the bottom — click the matching one"
+
+    ShowInstructions(instrText, gWin, fontSmall, btn1, btn2, clickLbl)
+
+    ## Build trial list for round 1
+    trialList <- []
+    i <- 0
+    while(i < numTrials)
+    {
+        if(Random() < gBaseRate)
+        {
+            PushOnEnd(trialList, 1)
+        } else {
+            PushOnEnd(trialList, 2)
+        }
+        i <- i + 1
+    }
+
+    trialNum <- 1
+    loop(vessel, trialList)
+    {
+        if(vessel == 1) { baseSig <- sig1 } else { baseSig <- sig2 }
+        sig <- baseSig
+
+        noiseChoice <- Round(Random() * 19) + 1
+        noiseImg <- Nth(noiseImgs, noiseChoice)
+        Move(noiseImg, Round(gVideoWidth/2), disp_y)
+
+        imgs <- MakeSonarDisplay(sig, gWin, zoom, disp_y)
+        if(gUseAudio == 1)
+        {
+            if(vessel == 1) { PlayBackground(sndV1) } else { PlayBackground(sndV2) }
+        }
+        Draw()
+
+        absT <- GetTime()
+        t0   <- GetTime()
+        resp <- WaitForClickOnTarget([btn1, btn2], [1, 2])
+        rt   <- GetTime() - t0
+        if(gUseAudio == 1)
+        {
+            Stop(sndV1)
+            Stop(sndV2)
+        }
+
+        if(resp == vessel) { correct <- 1 } else { correct <- 0 }
+
+        nMatches <- CountMatches(sig, baseSig)
+        nShown   <- Length(sig)
+        nExtra   <- nShown - nMatches
+        nMissing <- Length(baseSig) - nMatches
+
+        FilePrint(dataFile, gSubNum + ",1,clean," + trialNum + "," + vessel + "," + resp + "," + correct + "," + VesselName(vessel) + "," + VesselName(resp) + "," + absT + "," + rt + "," + SigToStr(baseSig) + "," + SigToStr(sig) + "," + nShown + "," + nExtra + "," + nMissing)
+
+        ShowFeedback(correct, gWin, fontFB, fb_y)
+        Move(noiseImg, offscreen_x, disp_y)
+        RemoveSonarDisplay(imgs, gWin)
+
+        trialNum <- trialNum + 1
+    }
+
+    ## ============================================================
+    ## ROUND 2: frequency-jittered signatures
+    ## ============================================================
+    instrText2 <- "<h3=center>Round 2: Frequency Uncertainty</h3>" + CR(1) +
+        "Doppler shift and depth changes cause bands to appear at <b>slightly wrong frequencies</b>." + CR(1) +
+        "<li>All 5 bands are present but each is shifted by roughly <b>+/- 20 Hz</b>" + CR(1) +
+        "<li>Focus on the <b>overall layout</b>, not exact positions"
+
+    ShowInstructions(instrText2, gWin, fontSmall, btn1, btn2, clickLbl)
+
+    trialList2j <- []
+    i <- 0
+    while(i < numTrials)
+    {
+        if(Random() < gBaseRate) { PushOnEnd(trialList2j, 1) } else { PushOnEnd(trialList2j, 2) }
+        i <- i + 1
+    }
+
+    trialNum <- 1
+    loop(vessel, trialList2j)
+    {
+        if(vessel == 1) { baseSig <- sig1 } else { baseSig <- sig2 }
+        sig <- MakeJitteredSig(baseSig, 10)
+
+        noiseChoice <- Round(Random() * 19) + 1
+        noiseImg <- Nth(noiseImgs, noiseChoice)
+        Move(noiseImg, Round(gVideoWidth/2), disp_y)
+
+        imgs <- MakeSonarDisplay(sig, gWin, zoom, disp_y)
+        if(gUseAudio == 1)
+        {
+            if(vessel == 1) { PlayBackground(sndV1) } else { PlayBackground(sndV2) }
+        }
+        Draw()
+
+        absT <- GetTime()
+        t0   <- GetTime()
+        resp <- WaitForClickOnTarget([btn1, btn2], [1, 2])
+        rt   <- GetTime() - t0
+        if(gUseAudio == 1)
+        {
+            Stop(sndV1)
+            Stop(sndV2)
+        }
+
+        if(resp == vessel) { correct <- 1 } else { correct <- 0 }
+
+        nMatches <- CountMatches(sig, baseSig)
+        nShown   <- Length(sig)
+        nExtra   <- nShown - nMatches
+        nMissing <- Length(baseSig) - nMatches
+
+        FilePrint(dataFile, gSubNum + ",2,jittered," + trialNum + "," + vessel + "," + resp + "," + correct + "," + VesselName(vessel) + "," + VesselName(resp) + "," + absT + "," + rt + "," + SigToStr(baseSig) + "," + SigToStr(sig) + "," + nShown + "," + nExtra + "," + nMissing)
+
+        ShowFeedback(correct, gWin, fontFB, fb_y)
+        Move(noiseImg, offscreen_x, disp_y)
+        RemoveSonarDisplay(imgs, gWin)
+
+        trialNum <- trialNum + 1
+    }
+
+    ## ============================================================
+    ## ROUND 3: noisy signatures
+    ## ============================================================
+    instrText3n <- "<h3=center>Round 3: Noisy Conditions</h3>" + CR(1) +
+        "Sea shelf echoes and <b>biologicals</b> (fish, whales) add extra bands to the display." + CR(1) +
+        "<li>All 5 true bands are still present" + CR(1) +
+        "<li><b>1-2 extra noise bands</b> are also shown — ignore them"
+
+    ShowInstructions(instrText3n, gWin, fontSmall, btn1, btn2, clickLbl)
+
+    trialList3n <- []
+    i <- 0
+    while(i < numTrials)
+    {
+        if(Random() < gBaseRate) { PushOnEnd(trialList3n, 1) } else { PushOnEnd(trialList3n, 2) }
+        i <- i + 1
+    }
+
+    trialNum <- 1
+    loop(vessel, trialList3n)
+    {
+        if(vessel == 1) { baseSig <- sig1 } else { baseSig <- sig2 }
+        sig <- MakeNoisySig(baseSig)
+
+        noiseChoice <- Round(Random() * 19) + 1
+        noiseImg <- Nth(noiseImgs, noiseChoice)
+        Move(noiseImg, Round(gVideoWidth/2), disp_y)
+
+        imgs <- MakeSonarDisplay(sig, gWin, zoom, disp_y)
+        if(gUseAudio == 1)
+        {
+            if(vessel == 1) { PlayBackground(sndV1) } else { PlayBackground(sndV2) }
+        }
+        Draw()
+
+        absT <- GetTime()
+        t0   <- GetTime()
+        resp <- WaitForClickOnTarget([btn1, btn2], [1, 2])
+        rt   <- GetTime() - t0
+        if(gUseAudio == 1)
+        {
+            Stop(sndV1)
+            Stop(sndV2)
+        }
+
+        if(resp == vessel) { correct <- 1 } else { correct <- 0 }
+
+        nMatches <- CountMatches(sig, baseSig)
+        nShown   <- Length(sig)
+        nExtra   <- nShown - nMatches
+        nMissing <- Length(baseSig) - nMatches
+
+        FilePrint(dataFile, gSubNum + ",3,noisy," + trialNum + "," + vessel + "," + resp + "," + correct + "," + VesselName(vessel) + "," + VesselName(resp) + "," + absT + "," + rt + "," + SigToStr(baseSig) + "," + SigToStr(sig) + "," + nShown + "," + nExtra + "," + nMissing)
+
+        ShowFeedback(correct, gWin, fontFB, fb_y)
+        Move(noiseImg, offscreen_x, disp_y)
+        RemoveSonarDisplay(imgs, gWin)
+
+        trialNum <- trialNum + 1
+    }
+
+    ## ============================================================
+    ## ROUND 4: mimic bands from the alternative vessel
+    ## ============================================================
+    instrText4m <- "<h3=center>Round 4: Acoustic Mimicry</h3>" + CR(1) +
+        "A nearby vessel adds <b>bands from the other vessel's signature</b> to the display." + CR(1) +
+        "<li>5 true bands + <b>1-2 mimic bands</b> from the opposing vessel" + CR(1) +
+        "<li>Focus on the <b>overall pattern</b> — don't be misled by a single band"
+
+    ShowInstructions(instrText4m, gWin, fontSmall, btn1, btn2, clickLbl)
+
+    trialList4m <- []
+    i <- 0
+    while(i < numTrials)
+    {
+        if(Random() < gBaseRate) { PushOnEnd(trialList4m, 1) } else { PushOnEnd(trialList4m, 2) }
+        i <- i + 1
+    }
+
+    trialNum <- 1
+    loop(vessel, trialList4m)
+    {
+        if(vessel == 1) { baseSig <- sig1; altSig <- sig2 }
+        else            { baseSig <- sig2; altSig <- sig1 }
+        sig <- MakeMimicSig(baseSig, altSig)
+
+        noiseChoice <- Round(Random() * 19) + 1
+        noiseImg <- Nth(noiseImgs, noiseChoice)
+        Move(noiseImg, Round(gVideoWidth/2), disp_y)
+
+        imgs <- MakeSonarDisplay(sig, gWin, zoom, disp_y)
+        if(gUseAudio == 1)
+        {
+            if(vessel == 1) { PlayBackground(sndV1) } else { PlayBackground(sndV2) }
+        }
+        Draw()
+
+        absT <- GetTime()
+        t0   <- GetTime()
+        resp <- WaitForClickOnTarget([btn1, btn2], [1, 2])
+        rt   <- GetTime() - t0
+        if(gUseAudio == 1)
+        {
+            Stop(sndV1)
+            Stop(sndV2)
+        }
+
+        if(resp == vessel) { correct <- 1 } else { correct <- 0 }
+
+        nMatches <- CountMatches(sig, baseSig)
+        nShown   <- Length(sig)
+        nExtra   <- nShown - nMatches
+        nMissing <- Length(baseSig) - nMatches
+
+        FilePrint(dataFile, gSubNum + ",4,mimic," + trialNum + "," + vessel + "," + resp + "," + correct + "," + VesselName(vessel) + "," + VesselName(resp) + "," + absT + "," + rt + "," + SigToStr(baseSig) + "," + SigToStr(sig) + "," + nShown + "," + nExtra + "," + nMissing)
+
+        ShowFeedback(correct, gWin, fontFB, fb_y)
+        Move(noiseImg, offscreen_x, disp_y)
+        RemoveSonarDisplay(imgs, gWin)
+
+        trialNum <- trialNum + 1
+    }
+
+    ## ============================================================
+    ## ROUND 5: probabilistic band sampling
+    ## ============================================================
+    instrText5 <- "<h3=center>Round 5: Intermittent Signals</h3>" + CR(1) +
+        "Cavitation and acoustic shadowing cause bands to <b>randomly disappear</b>." + CR(1) +
+        "<li>Each true band has a <b>75% chance</b> of appearing on each trial" + CR(1) +
+        "<li>Use all visible evidence — some trials will show only 2-3 bands"
+
+    ShowInstructions(instrText5, gWin, fontSmall, btn1, btn2, clickLbl)
+
+    p_show <- 0.75    ## probability each true band is visible
+
+    trialList5 <- []
+    i <- 0
+    while(i < numTrials)
+    {
+        if(Random() < gBaseRate) { PushOnEnd(trialList5, 1) } else { PushOnEnd(trialList5, 2) }
+        i <- i + 1
+    }
+
+    trialNum <- 1
+    loop(vessel, trialList5)
+    {
+        if(vessel == 1) { baseSig <- sig1 } else { baseSig <- sig2 }
+        sig <- MakeProbSig(baseSig, p_show)
+
+        noiseChoice <- Round(Random() * 19) + 1
+        noiseImg <- Nth(noiseImgs, noiseChoice)
+        Move(noiseImg, Round(gVideoWidth/2), disp_y)
+
+        imgs <- MakeSonarDisplay(sig, gWin, zoom, disp_y)
+        if(gUseAudio == 1)
+        {
+            if(vessel == 1) { PlayBackground(sndV1) } else { PlayBackground(sndV2) }
+        }
+        Draw()
+
+        absT <- GetTime()
+        t0   <- GetTime()
+        resp <- WaitForClickOnTarget([btn1, btn2], [1, 2])
+        rt   <- GetTime() - t0
+        if(gUseAudio == 1)
+        {
+            Stop(sndV1)
+            Stop(sndV2)
+        }
+
+        if(resp == vessel) { correct <- 1 } else { correct <- 0 }
+
+        nMatches <- CountMatches(sig, baseSig)
+        nShown   <- Length(sig)
+        nExtra   <- nShown - nMatches
+        nMissing <- Length(baseSig) - nMatches
+
+        FilePrint(dataFile, gSubNum + ",5,probabilistic," + trialNum + "," + vessel + "," + resp + "," + correct + "," + VesselName(vessel) + "," + VesselName(resp) + "," + absT + "," + rt + "," + SigToStr(baseSig) + "," + SigToStr(sig) + "," + nShown + "," + nExtra + "," + nMissing)
+
+        ShowFeedback(correct, gWin, fontFB, fb_y)
+        Move(noiseImg, offscreen_x, disp_y)
+        RemoveSonarDisplay(imgs, gWin)
+
+        trialNum <- trialNum + 1
+    }
+
+    ## ============================================================
+    FileClose(dataFile)
+    UploadFile(gSubNum, dataFile.filename)
+
+    done <- MakeLabel("Task complete. Click anywhere to exit.", fontLarge)
+    AddObject(done, gWin)
+    Move(done, Round(gVideoWidth/2), Round(gVideoHeight/2))
+    Draw()
+    WaitForDownClick()
+}

@@ -1,0 +1,85 @@
+{
+  "task_id": "noise-progression",
+  "display": "narrowband",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Shchuka-B",
+      "sig": [50, 125, 340, 1200, 1541]
+    },
+    {
+      "id": 2,
+      "name": "Kilo-877",
+      "sig": [40, 135, 320, 1100, 1490]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "clean",
+      "label": "Clean",
+      "instructions": "<h3=center>Block 1: Clean Signal</h3>All 5 characteristic frequency bands are visible and exact.",
+      "trials": 10,
+      "base_rate": 0.5,
+      "signal_mode": "clean",
+      "signal_params": { "jitter_sd": 0, "n_noise_min": 0, "n_noise_max": 0, "p_show": 1.0 },
+      "feedback": "accuracy",
+      "isi": 800
+    },
+    {
+      "id": "jitter-low",
+      "label": "Low Jitter",
+      "instructions": "<h3=center>Block 2: Low Frequency Jitter</h3>Bands shifted by roughly <b>+/- 10 Hz</b>.",
+      "trials": 10,
+      "base_rate": 0.5,
+      "signal_mode": "jitter",
+      "signal_params": { "jitter_sd": 10 },
+      "feedback": "accuracy",
+      "isi": 800
+    },
+    {
+      "id": "jitter-high",
+      "label": "High Jitter",
+      "instructions": "<h3=center>Block 3: High Frequency Jitter</h3>Bands shifted by roughly <b>+/- 40 Hz</b>.",
+      "trials": 10,
+      "base_rate": 0.5,
+      "signal_mode": "jitter",
+      "signal_params": { "jitter_sd": 40 },
+      "feedback": "accuracy",
+      "isi": 800
+    },
+    {
+      "id": "noisy-low",
+      "label": "Low Noise",
+      "instructions": "<h3=center>Block 4: Low Noise</h3>One extra noise band added per trial.",
+      "trials": 10,
+      "base_rate": 0.5,
+      "signal_mode": "noisy",
+      "signal_params": { "n_noise_min": 1, "n_noise_max": 1 },
+      "feedback": "accuracy",
+      "isi": 800
+    },
+    {
+      "id": "noisy-high",
+      "label": "High Noise",
+      "instructions": "<h3=center>Block 5: High Noise</h3>Three to five extra noise bands added per trial.",
+      "trials": 10,
+      "base_rate": 0.5,
+      "signal_mode": "noisy",
+      "signal_params": { "n_noise_min": 3, "n_noise_max": 5 },
+      "feedback": "accuracy",
+      "isi": 800
+    },
+    {
+      "id": "combo",
+      "label": "Combined",
+      "instructions": "<h3=center>Block 6: Jitter + Noise Combined</h3>Bands are both shifted <b>and</b> extra noise is added.",
+      "trials": 15,
+      "base_rate": 0.5,
+      "signal_mode": "combo",
+      "signal_params": { "jitter_sd": 25, "n_noise_min": 2, "n_noise_max": 4 },
+      "feedback": "accuracy",
+      "isi": 800
+    }
+  ]
+}

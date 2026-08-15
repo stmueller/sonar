@@ -1,0 +1,221 @@
+## Sonar waterfall simulator -- scrolling 3-row display.
+## 5 hardcoded demo frequencies, each with 2-copy looping scroll.
+## All rows share the same y0/y1 scroll state (same vpH for all rows).
+##
+## Architecture:
+##   gVps      -- list of 3 viewport canvases [vp1, vp2, vp3]
+##   gFreqs    -- list of 5 entries, each:
+##                [vp_idx, x_vp, base_path, copy0_img, copy1_img]
+##   gCopyY    -- [y0, y1] shared scroll y (viewport-relative centers)
+##
+## Demo frequencies (from manifest):
+##   freq  40 Hz -> row 1, x_content=312,  base stripe_r1_f0040
+##   freq 120 Hz -> row 1, x_content=936,  base stripe_r1_f0120
+##   freq 290 Hz -> row 2, x_content=156,  base stripe_r2_f0290
+##   freq 1110Hz -> row 3, x_content=702,  base stripe_r3_f1110
+##   freq 1430Hz -> row 3, x_content=1325, base stripe_r3_f1430
+
+## Return a zero-padded 2-digit string for variant 0-7
+define VarStr(v)
+{
+    vstr <- "" + v
+    if(v < 10) { vstr <- "0" + v }
+    return vstr
+}
+
+## Load a random variant image for a given base path (stripe_rR_fFFFF)
+## base e.g. "img/stripes/stripe_r1_f0040"
+define RandStripeImg(base)
+{
+    v    <- Round(Random() * 7)
+    path <- base + "_v" + VarStr(v) + ".png"
+    img  <- MakeImage(path)
+    img.zoomx <- gZoom
+    img.zoomy <- gZoom
+    return img
+}
+
+## Add stripe image to its viewport, positioned at (x_vp, y_center)
+define PlaceStripe(img, vp, x_vp, y_center)
+{
+    AddObject(img, vp)
+    Move(img, x_vp, y_center)
+}
+
+## Remove stripe from its viewport
+define RemoveStripe(img, vp)
+{
+    RemoveObject(img, vp)
+}
+
+## ScrollTick: advance all stripes by 1px, recycle when copy0 scrolls off top
+define ScrollTick(evt:0)
+{
+    if(gScrollActive == 1)
+    {
+        y0 <- Nth(gCopyY, 1) - 1
+        y1 <- Nth(gCopyY, 2) - 1
+
+        if(y0 + Round(gVpH / 2) < 0)
+        {
+            ## Recycle copy0: remove old, load new random variant at y1+vpH
+            y0new <- y1 + gVpH
+
+            i <- 1
+            loop(fe, gFreqs)
+            {
+                vp_idx <- Nth(fe, 1)
+                x_vp   <- Nth(fe, 2)
+                base   <- Nth(fe, 3)
+                c0     <- Nth(fe, 4)
+                c1     <- Nth(fe, 5)
+                vp     <- Nth(gVps, vp_idx)
+
+                RemoveStripe(c0, vp)
+                newimg <- RandStripeImg(base)
+                PlaceStripe(newimg, vp, x_vp, y0new)
+
+                gFreqs <- SetElement(gFreqs, i, [vp_idx, x_vp, base, c1, newimg])
+                i <- i + 1
+            }
+
+            gCopyY <- [y1, y0new]
+            ResetCanvas(Nth(gVps, 1))
+            ResetCanvas(Nth(gVps, 2))
+            ResetCanvas(Nth(gVps, 3))
+        } else {
+            ## Just move all stripes
+            gCopyY <- [y0, y1]
+            loop(fe, gFreqs)
+            {
+                vp_idx <- Nth(fe, 1)
+                x_vp   <- Nth(fe, 2)
+                c0     <- Nth(fe, 4)
+                c1     <- Nth(fe, 5)
+                vp     <- Nth(gVps, vp_idx)
+                Move(c0, x_vp, y0)
+                Move(c1, x_vp, y1)
+            }
+        }
+
+        Draw()
+        RegisterEvent("<TIMER>", 1, GetTime() + 200, "<GEQ>", "ScrollTick", [])
+    }
+    return "<REMOVE>"
+}
+
+define Start(p)
+{
+    gWin <- MakeWindow("black")
+
+    ## gZoom scales 2000px native width to half the screen width
+    gZoom <- gVideoWidth / 2000.0 * 0.5
+
+    ## Viewport dimensions (native: 1950 wide x 291 tall per row)
+    gVpW <- Round(1950 * gZoom)
+    gVpH <- Round(291  * gZoom)
+
+    ## Background image (2000x1000 native)
+    bgW <- Round(2000 * gZoom)
+    bgH <- Round(1000 * gZoom)
+    bg  <- MakeImage("img/waterfall_bg.png")
+    bg.zoomx <- gZoom
+    bg.zoomy <- gZoom
+    AddObject(bg, gWin)
+    Move(bg, Round(bgW / 2), Round(bgH / 2))
+
+    ## Viewport X center: left margin (50px native) + half content width (975px)
+    vpCX <- Round((50 + 975) * gZoom)
+
+    ## Row center Y positions (native: row tops at 60, 381, 702; rowH=291)
+    vpCY1 <- Round((60  + 145) * gZoom)
+    vpCY2 <- Round((381 + 145) * gZoom)
+    vpCY3 <- Round((702 + 145) * gZoom)
+
+    ## Create 3 viewport canvases
+    vp1 <- MakeCanvas(gVpW, gVpH, MakeColorRGB(0, 0, 0))
+    AddObject(vp1, gWin)
+    Move(vp1, vpCX, vpCY1)
+
+    vp2 <- MakeCanvas(gVpW, gVpH, MakeColorRGB(0, 0, 0))
+    AddObject(vp2, gWin)
+    Move(vp2, vpCX, vpCY2)
+
+    vp3 <- MakeCanvas(gVpW, gVpH, MakeColorRGB(0, 0, 0))
+    AddObject(vp3, gWin)
+    Move(vp3, vpCX, vpCY3)
+
+    gVps <- [vp1, vp2, vp3]
+
+    ## Stripe x positions within viewport (x_content + 20px half-width, scaled)
+    ## x_vp = Round((x_content + 20) * gZoom)
+    xvp_40   <- Round((312  + 20) * gZoom)
+    xvp_120  <- Round((936  + 20) * gZoom)
+    xvp_290  <- Round((156  + 20) * gZoom)
+    xvp_1110 <- Round((702  + 20) * gZoom)
+    xvp_1430 <- Round((1325 + 20) * gZoom)
+
+    ## Initial copy y positions: copy0 at viewport center, copy1 one vpH below
+    y0 <- Round(gVpH / 2)
+    y1 <- Round(gVpH / 2) + gVpH
+    gCopyY <- [y0, y1]
+
+    ## Build freq table: [vp_idx, x_vp, base_path, copy0, copy1]
+    ## freq 40Hz, row 1
+    b1 <- "img/stripes/stripe_r1_f0040"
+    c0_40 <- RandStripeImg(b1)
+    c1_40 <- RandStripeImg(b1)
+    PlaceStripe(c0_40, vp1, xvp_40, y0)
+    PlaceStripe(c1_40, vp1, xvp_40, y1)
+
+    ## freq 120Hz, row 1
+    b2 <- "img/stripes/stripe_r1_f0120"
+    c0_120 <- RandStripeImg(b2)
+    c1_120 <- RandStripeImg(b2)
+    PlaceStripe(c0_120, vp1, xvp_120, y0)
+    PlaceStripe(c1_120, vp1, xvp_120, y1)
+
+    ## freq 290Hz, row 2
+    b3 <- "img/stripes/stripe_r2_f0290"
+    c0_290 <- RandStripeImg(b3)
+    c1_290 <- RandStripeImg(b3)
+    PlaceStripe(c0_290, vp2, xvp_290, y0)
+    PlaceStripe(c1_290, vp2, xvp_290, y1)
+
+    ## freq 1110Hz, row 3
+    b4 <- "img/stripes/stripe_r3_f1110"
+    c0_1110 <- RandStripeImg(b4)
+    c1_1110 <- RandStripeImg(b4)
+    PlaceStripe(c0_1110, vp3, xvp_1110, y0)
+    PlaceStripe(c1_1110, vp3, xvp_1110, y1)
+
+    ## freq 1430Hz, row 3
+    b5 <- "img/stripes/stripe_r3_f1430"
+    c0_1430 <- RandStripeImg(b5)
+    c1_1430 <- RandStripeImg(b5)
+    PlaceStripe(c0_1430, vp3, xvp_1430, y0)
+    PlaceStripe(c1_1430, vp3, xvp_1430, y1)
+
+    gFreqs <- [
+        [1, xvp_40,   b1, c0_40,   c1_40],
+        [1, xvp_120,  b2, c0_120,  c1_120],
+        [2, xvp_290,  b3, c0_290,  c1_290],
+        [3, xvp_1110, b4, c0_1110, c1_1110],
+        [3, xvp_1430, b5, c0_1430, c1_1430]
+    ]
+
+    Draw()
+
+    ## Start scrolling; click anywhere to exit
+    gScrollActive <- 1
+    RegisterEvent("<TIMER>", 1, GetTime() + 200, "<GEQ>", "ScrollTick", [])
+
+    font <- MakeFont("DejaVuSans.ttf", 0, 20, MakeColor("yellow"), MakeColor("black"), 0)
+    qlab <- MakeLabel("[ Click to quit ]", font)
+    AddObject(qlab, gWin)
+    Move(qlab, Round(gVideoWidth / 2), bgH + Round((gVideoHeight - bgH) / 2))
+    Draw()
+
+    WaitForMouseButton()
+    gScrollActive <- 0
+}

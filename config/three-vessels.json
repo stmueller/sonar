@@ -1,0 +1,57 @@
+{
+  "task_id": "three-vessels",
+  "display": "narrowband",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Shchuka-B",
+      "sig": [50, 125, 340, 1200, 1541]
+    },
+    {
+      "id": 2,
+      "name": "Kilo-877",
+      "sig": [40, 135, 320, 1100, 1490]
+    },
+    {
+      "id": 3,
+      "name": "Schooner",
+      "sig": [75, 200, 500, 1000, 1700]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "learn3",
+      "label": "Three Vessels — Clean",
+      "instructions": "<h3=center>Three-Vessel Identification</h3>Now there are <b>three</b> possible vessels to identify.<li>Study the three signature thumbnails at the bottom<li>Click the one that matches the display",
+      "trials": 15,
+      "base_rate": 0.5,
+      "signal_mode": "clean",
+      "signal_params": { "jitter_sd": 20, "n_noise_min": 1, "n_noise_max": 2 },
+      "feedback": "accuracy",
+      "isi": 1000
+    },
+    {
+      "id": "noisy3",
+      "label": "Three Vessels — Noisy",
+      "instructions": "<h3=center>Three-Vessel Identification — Noise Added</h3>Same three vessels, but now with extra noise bands.<li>Focus on the overall pattern of bands, not individual frequencies",
+      "trials": 20,
+      "base_rate": 0.5,
+      "signal_mode": "noisy",
+      "signal_params": { "jitter_sd": 20, "n_noise_min": 1, "n_noise_max": 3 },
+      "feedback": "accuracy",
+      "isi": 1000
+    },
+    {
+      "id": "jitter3",
+      "label": "Three Vessels — Jittered",
+      "instructions": "<h3=center>Three-Vessel Identification — Frequency Uncertainty</h3>Each band is shifted by a random amount on every trial.<li>The pattern is still recognizable — trust your pattern matching",
+      "trials": 20,
+      "base_rate": 0.5,
+      "signal_mode": "jitter",
+      "signal_params": { "jitter_sd": 25, "n_noise_min": 1, "n_noise_max": 2 },
+      "feedback": "accuracy",
+      "isi": 1000
+    }
+  ]
+}

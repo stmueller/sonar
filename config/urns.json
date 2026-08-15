@@ -1,0 +1,52 @@
+{
+  "task_id": "urns",
+  "display": "heading",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "East",
+      "sig": [90, 10],
+      "contact_type": "solid"
+    },
+    {
+      "id": 2,
+      "name": "West",
+      "sig": [270, 10],
+      "contact_type": "solid"
+    }
+  ],
+  "blocks": [
+    {
+      "id": "practice",
+      "label": "Practice",
+      "instructions": "<h3=center>Directional Inference — Practice</h3>Enemy drones are approaching from either the EAST or WEST.<li>Each contact you observe costs 5 pts. Correct decision: +100 pts. Wrong: -500 pts.<li>Click <b>WAIT</b> to observe the next contact on the bearing strip. Click <b>EAST</b> or <b>WEST</b> when confident.<li>You may observe up to 20 contacts before you must decide.",
+      "trials": 10,
+      "response_mode": "urns",
+      "feedback": "payoff",
+      "isi": 800,
+      "seed": 2001,
+      "urn_east_rate": 0.6667,
+      "urn_bearing_sd": 20,
+      "urn_draw_limit": 20,
+      "urn_draw_cost": -5,
+      "urn_correct_pts": 100,
+      "urn_wrong_pts": -500
+    },
+    {
+      "id": "main",
+      "label": "Main Task",
+      "instructions": "<h3=center>Directional Inference</h3>Each contact observed costs 5 pts. Correct: +100 pts. Wrong: -500 pts. Decide EAST or WEST when confident — up to 20 contacts per round.",
+      "trials": 40,
+      "response_mode": "urns",
+      "feedback": "payoff",
+      "isi": 600,
+      "urn_east_rate": 0.6667,
+      "urn_bearing_sd": 20,
+      "urn_draw_limit": 20,
+      "urn_draw_cost": -5,
+      "urn_correct_pts": 100,
+      "urn_wrong_pts": -500
+    }
+  ]
+}

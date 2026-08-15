@@ -1,0 +1,13 @@
+# Runtime subject data
+data/*
+!data/.gitkeep
+
+# Long WAV masters — use the short .ogg loops in-repo
+sounds/*.wav
+
+# Editor / backup files
+*~
+*.pbl~
+*.json~
+.DS_Store
+*.swp

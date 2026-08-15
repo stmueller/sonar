@@ -1,0 +1,43 @@
+{
+  "task_id": "probability-matching",
+  "display": "narrowband",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Kilo-877A",
+      "sig": [40, 135, 320, 1100, 1490]
+    },
+    {
+      "id": 2,
+      "name": "Kilo-877B",
+      "sig": [40, 135, 380, 1100, 1560]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "practice",
+      "label": "Practice",
+      "instructions": "<h3=center>Contact Identification — Practice</h3>Two vessel types are possible: <b>Kilo-877A</b> and <b>Kilo-877B</b>. These are sister vessels with nearly identical acoustic signatures.<li>One appears more often than the other. Study the thumbnails carefully and try to identify each contact.<li>Feedback after each trial.",
+      "trials": 30,
+      "base_rate": 0.7,
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 8 },
+      "feedback": "accuracy",
+      "collect_confidence": 1,
+      "isi": 800
+    },
+    {
+      "id": "main",
+      "label": "Main Task",
+      "instructions": "<h3=center>Contact Identification</h3>Identify Kilo-877A or Kilo-877B from the acoustic signature. The signatures are very similar — use all available cues.<li>Feedback continues. Try to maximize accuracy.",
+      "trials": 200,
+      "base_rate": 0.7,
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 8 },
+      "feedback": "accuracy",
+      "collect_confidence": 1,
+      "isi": 600
+    }
+  ]
+}

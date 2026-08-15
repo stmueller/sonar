@@ -1,0 +1,53 @@
+{
+  "task_id": "bandit",
+  "display": "heading",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Zone-NW",
+      "sig": [45, 6],
+      "contact_type": "solid",
+      "payoff_mean": 30,
+      "payoff_sd": 10
+    },
+    {
+      "id": 2,
+      "name": "Zone-NE",
+      "sig": [135, 6],
+      "contact_type": "solid",
+      "payoff_mean": 50,
+      "payoff_sd": 60
+    },
+    {
+      "id": 3,
+      "name": "Zone-SW",
+      "sig": [225, 6],
+      "contact_type": "solid",
+      "payoff_mean": -10,
+      "payoff_sd": 15
+    },
+    {
+      "id": 4,
+      "name": "Zone-SE",
+      "sig": [315, 6],
+      "contact_type": "solid",
+      "payoff_mean": 10,
+      "payoff_sd": 80
+    }
+  ],
+  "blocks": [
+    {
+      "id": "main",
+      "label": "Zone Investigation",
+      "instructions": "<h3=center>Active Sonar Investigation</h3>Four contact zones appear on the bearing display.<li>Click a zone to ping it with <b>active sonar</b><li>Active sonar guarantees identification — but each ping increases your detection risk<li>Some zones yield more intelligence value than others<li>Some zones carry higher risk penalties<li>Learn which zones are worth investigating<li>Maximize your total score over 100 trials",
+      "trials": 100,
+      "base_rate": 0.5,
+      "response_mode": "bandit",
+      "show_thumbnails": 0,
+      "signal_mode": "clean",
+      "feedback": "payoff",
+      "isi": 600
+    }
+  ]
+}

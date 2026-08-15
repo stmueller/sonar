@@ -1,0 +1,67 @@
+{
+  "task_id": "horizon",
+  "display": "heading",
+  "audio": false,
+  "vessels": [
+    { "id": 1, "name": "Alpha", "sig": [50, 125, 340, 1200, 1541] },
+    { "id": 2, "name": "Bravo", "sig": [40, 135, 320, 1100, 1490] }
+  ],
+  "blocks": [
+    {
+      "id": "h1_equal",
+      "label": "Horizon 1 — Equal Info",
+      "instructions": "<h3=center>Region Monitoring — Short Horizon</h3>Each round, the system automatically gathers 4 contacts from East and West regions (2 from each). You see the payoff for each gathered contact.<li>After gathering, you make <b>1 choice</b>: monitor East or West. You earn the payoff from whichever region has more activity.<li>One region always has higher average payoff than the other.",
+      "trials": 10,
+      "response_mode": "horizon",
+      "horizon_free_trials": 1,
+      "horizon_info": "equal",
+      "horizon_hi_mean": 60,
+      "horizon_lo_mean": 40,
+      "horizon_pay_sd": 20,
+      "feedback": "payoff",
+      "isi": 500
+    },
+    {
+      "id": "h6_equal",
+      "label": "Horizon 6 — Equal Info",
+      "instructions": "<h3=center>Region Monitoring — Long Horizon</h3>The system gathers 4 contacts (2 East, 2 West). You then make <b>6 choices</b> in sequence, each scored immediately.<li>With 6 choices ahead, it may pay to explore the region you know less about before committing.",
+      "trials": 10,
+      "response_mode": "horizon",
+      "horizon_free_trials": 6,
+      "horizon_info": "equal",
+      "horizon_hi_mean": 60,
+      "horizon_lo_mean": 40,
+      "horizon_pay_sd": 20,
+      "feedback": "payoff",
+      "isi": 500
+    },
+    {
+      "id": "h1_unequal",
+      "label": "Horizon 1 — Unequal Info",
+      "instructions": "<h3=center>Region Monitoring — Short Horizon, Unequal Gathering</h3>The system gathers 4 contacts but splits them unevenly: 1 from one region, 3 from the other.<li>You make <b>1 choice</b>. You know more about the region sampled 3 times — use that knowledge.",
+      "trials": 10,
+      "response_mode": "horizon",
+      "horizon_free_trials": 1,
+      "horizon_info": "unequal",
+      "horizon_hi_mean": 60,
+      "horizon_lo_mean": 40,
+      "horizon_pay_sd": 20,
+      "feedback": "payoff",
+      "isi": 500
+    },
+    {
+      "id": "h6_unequal",
+      "label": "Horizon 6 — Unequal Info",
+      "instructions": "<h3=center>Region Monitoring — Long Horizon, Unequal Gathering</h3>The system gathers 4 contacts unevenly (1 from one region, 3 from the other). You then make <b>6 choices</b>.<li>With more choices ahead, exploring the undersampled region first gives you better information for subsequent choices.",
+      "trials": 10,
+      "response_mode": "horizon",
+      "horizon_free_trials": 6,
+      "horizon_info": "unequal",
+      "horizon_hi_mean": 60,
+      "horizon_lo_mean": 40,
+      "horizon_pay_sd": 20,
+      "feedback": "payoff",
+      "isi": 500
+    }
+  ]
+}

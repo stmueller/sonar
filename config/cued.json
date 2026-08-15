@@ -1,0 +1,51 @@
+{
+  "task_id": "cued",
+  "display": "cued",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Alpha",
+      "sig": [70, 320, 480, 850, 1150],
+      "contact_type": "solid"
+    },
+    {
+      "id": 2,
+      "name": "Bravo",
+	"sig": [160, 430, 570, 1380, 1550],
+      "contact_type": "noisy"
+    }
+  ],
+  "blocks": [
+    {
+      "id": "practice",
+      "label": "Practice",
+      "instructions": "<h3=center>Contact Investigation — Practice</h3>A bearing cue will flash briefly on the heading display.<li>The acoustic signature then appears on the waterfall — identify the vessel<li>Click <b>Alpha</b> or <b>Bravo</b> based on the signature<li>The cue usually predicts the vessel identity, but not always<li>Feedback will tell you if you were correct",
+      "trials": 20,
+      "base_rate": 0.5,
+      "cue_validity": 0.8,
+      "cue_duration": 500,
+      "cue_soa": 500,
+      "response_mode": "cued",
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 8 },
+      "feedback": "accuracy",
+      "isi": 800
+    },
+    {
+      "id": "main",
+      "label": "Main Task",
+      "instructions": "<h3=center>Contact Investigation</h3>Continue identifying vessels from the acoustic signature.<li>The bearing cue still appears briefly before each signature<li>No feedback in this block",
+      "trials": 100,
+      "base_rate": 0.5,
+      "cue_validity": 0.8,
+      "cue_duration": 500,
+      "cue_soa": 500,
+      "response_mode": "cued",
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 8 },
+      "feedback": "none",
+      "isi": 600
+    }
+  ]
+}

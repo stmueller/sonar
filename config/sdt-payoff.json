@@ -1,0 +1,58 @@
+{
+  "task_id": "sdt-payoff",
+  "display": "narrowband",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Shchuka-B",
+      "sig": [50, 125, 340, 1200, 1541]
+    },
+    {
+      "id": 2,
+      "name": "Kilo-877",
+      "sig": [40, 135, 320, 1100, 1490]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "neutral",
+      "label": "Neutral Payoff",
+      "instructions": "<h3=center>Block 1: Neutral Payoff</h3>Identify each vessel. Points are equal for both correct responses.<li>Correct: <b>+10 pts</b> either vessel<li>Wrong: <b>-10 pts</b> either vessel<li>Try to maximize your score",
+      "trials": 20,
+      "base_rate": 0.5,
+      "signal_mode": "noisy",
+      "signal_params": { "jitter_sd": 20, "n_noise_min": 1, "n_noise_max": 2 },
+      "feedback": "payoff",
+      "payoff_hit": 10,
+      "payoff_miss": -10,
+      "isi": 1000
+    },
+    {
+      "id": "biased-high",
+      "label": "Asymmetric Payoff",
+      "instructions": "<h3=center>Block 2: Asymmetric Payoff</h3>Same task — but the payoffs have changed.<li>Correct <b>Shchuka-B</b>: <b>+20 pts</b><li>Correct <b>Kilo-877</b>: <b>+5 pts</b><li>Wrong: <b>-10 pts</b> either vessel<li>Adjust your strategy accordingly",
+      "trials": 20,
+      "base_rate": 0.5,
+      "signal_mode": "noisy",
+      "signal_params": { "jitter_sd": 20, "n_noise_min": 1, "n_noise_max": 2 },
+      "feedback": "payoff",
+      "payoff_hit": 20,
+      "payoff_miss": -10,
+      "isi": 1000
+    },
+    {
+      "id": "rare-signal",
+      "label": "Rare Signal",
+      "instructions": "<h3=center>Block 3: Rare Signal</h3>Shchuka-B now appears on only <b>20% of trials</b>.<li>Correct <b>Shchuka-B</b>: <b>+30 pts</b><li>Correct <b>Kilo-877</b>: <b>+5 pts</b><li>Wrong: <b>-10 pts</b><li>Is it worth changing your strategy?",
+      "trials": 20,
+      "base_rate": 0.2,
+      "signal_mode": "noisy",
+      "signal_params": { "jitter_sd": 20, "n_noise_min": 1, "n_noise_max": 2 },
+      "feedback": "payoff",
+      "payoff_hit": 30,
+      "payoff_miss": -10,
+      "isi": 1000
+    }
+  ]
+}

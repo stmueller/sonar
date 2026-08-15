@@ -1,0 +1,3908 @@
+## sonar-task.pbl  -- General-purpose JSON-driven decision task simulator
+## Uses sonar cover story. All task behavior controlled by sonar-task.json.
+## Phase 1: modular 2-AFC with configurable signal modes, feedback, and data logging.
+##
+## Run: bin/pebl2 demo/sonar/sonar-task.pbl
+## Config: demo/sonar/sonar-task.json  (or pass path as param)
+
+
+## ============================================================
+## SIGNAL GENERATION
+## ============================================================
+
+define CopyList(lst)
+{
+    out <- []
+    loop(x, lst) { PushOnEnd(out, x) }
+    return(out)
+}
+
+
+define MakeCleanSig(baseSig)
+{
+    return(CopyList(baseSig))
+}
+
+
+define MakeJitteredSig(baseSig, sd)
+{
+    sig <- []
+    loop(f, baseSig)
+    {
+        jf <- Round(f + RandomNormal(0, sd))
+        if(jf < 50)   { jf <- 50 }
+        if(jf > 1750) { jf <- 1750 }
+        PushOnEnd(sig, jf)
+    }
+    return(sig)
+}
+
+
+define MakeNoisySig(baseSig, nMin, nMax)
+{
+    sig    <- CopyList(baseSig)
+    nNoise <- nMin + Round(Random() * (nMax - nMin))
+    added  <- 0
+    tries  <- 0
+    while(added < nNoise and tries < 200)
+    {
+        tries <- tries + 1
+        f <- Round(50 + Random() * 1700)
+        tooClose <- 0
+        loop(existing, sig)
+        {
+            if(Abs(f - existing) < 30) { tooClose <- 1 }
+        }
+        if(tooClose == 0)
+        {
+            PushOnEnd(sig, f)
+            added <- added + 1
+        }
+    }
+    return(sig)
+}
+
+
+define MakeMimicSig(baseSig, altSig, nMimic)
+{
+    sig    <- CopyList(baseSig)
+    added  <- 0
+    tries  <- 0
+    while(added < nMimic and tries < 50)
+    {
+        tries <- tries + 1
+        idx   <- Round(1 + Random() * (Length(altSig) - 1))
+        f     <- Nth(altSig, idx)
+        tooClose <- 0
+        loop(existing, sig)
+        {
+            if(Abs(f - existing) < 30) { tooClose <- 1 }
+        }
+        if(tooClose == 0)
+        {
+            PushOnEnd(sig, f)
+            added <- added + 1
+        }
+    }
+    return(sig)
+}
+
+
+define MakeProbSig(baseSig, pShow)
+{
+    sig <- []
+    loop(f, baseSig)
+    {
+        if(Random() < pShow) { PushOnEnd(sig, f) }
+    }
+    nRandom <- Round(1 + Random())
+    added <- 0
+    tries <- 0
+    while(added < nRandom and tries < 200)
+    {
+        tries <- tries + 1
+        f <- Round(50 + Random() * 1700)
+        tooClose <- 0
+        loop(existing, sig)
+        {
+            if(Abs(f - existing) < 30) { tooClose <- 1 }
+        }
+        if(tooClose == 0)
+        {
+            PushOnEnd(sig, f)
+            added <- added + 1
+        }
+    }
+    if(Length(sig) == 0) { PushOnEnd(sig, Nth(baseSig, 1)) }
+    return(sig)
+}
+
+
+## jitter + noisy combined
+define MakeComboSig(baseSig, sd, nMin, nMax)
+{
+    jittered <- MakeJitteredSig(baseSig, sd)
+    sig      <- MakeNoisySig(jittered, nMin, nMax)
+    return(sig)
+}
+
+
+## Generate a target sig: each base band shown with pShow probability + small jitter.
+## Additional alpha bands may appear (leakage) at rate pLeak per missing band.
+define MakeTargetSig(baseSig, pShow, jitterSd, pLeak)
+{
+    sig  <- []
+    loop(f, baseSig)
+    {
+        if(Random() < pShow)
+        {
+            jf <- Round(f + RandomNormal(0, jitterSd))
+            if(jf < 50)   { jf <- 50 }
+            if(jf > 1750) { jf <- 1750 }
+            PushOnEnd(sig, jf)
+        }
+    }
+    ## Leak: random extra bands near alpha frequencies (noise on target)
+    loop(f, baseSig)
+    {
+        if(Random() < pLeak)
+        {
+            jf <- Round(f + RandomNormal(0, jitterSd * 2))
+            if(jf < 50)   { jf <- 50 }
+            if(jf > 1750) { jf <- 1750 }
+            tooClose <- 0
+            loop(existing, sig)
+            {
+                if(Abs(jf - existing) < 30) { tooClose <- 1 }
+            }
+            if(tooClose == 0) { PushOnEnd(sig, jf) }
+        }
+    }
+    if(Length(sig) == 0) { PushOnEnd(sig, Nth(baseSig, 1)) }
+    return(sig)
+}
+
+
+## Generate a foil sig: random bands, but alpha bands bleed in at rate pAlphaLeak.
+## This means foils sometimes look partly like the target, raising task difficulty.
+define MakeFoilSig(alphaSig, nBands, pAlphaLeak, jitterSd)
+{
+    sig  <- []
+    rows <- [[50, 240], [260, 740], [760, 1740]]
+    ## Each alpha band bleeds into foil with pAlphaLeak
+    loop(f, alphaSig)
+    {
+        if(Random() < pAlphaLeak)
+        {
+            jf <- Round(f + RandomNormal(0, jitterSd))
+            if(jf < 50)   { jf <- 50 }
+            if(jf > 1750) { jf <- 1750 }
+            tooClose <- 0
+            loop(existing, sig)
+            {
+                if(Abs(jf - existing) < 30) { tooClose <- 1 }
+            }
+            if(tooClose == 0) { PushOnEnd(sig, jf) }
+        }
+    }
+    ## Fill remaining bands randomly
+    added <- 0
+    tries <- 0
+    while(Length(sig) < nBands and tries < 200)
+    {
+        tries <- tries + 1
+        ri    <- 1 + Round(Random() * 2)
+        r     <- Nth(rows, ri)
+        lo    <- Nth(r, 1)
+        hi    <- Nth(r, 2)
+        f     <- lo + Round(Random() * (hi - lo))
+        tooClose <- 0
+        loop(existing, sig)
+        {
+            if(Abs(f - existing) < 40) { tooClose <- 1 }
+        }
+        if(tooClose == 0) { PushOnEnd(sig, f) }
+    }
+    return(sig)
+}
+
+
+## Generate a random 5-band narrowband signature that does not match any vessel template.
+## Bands are placed randomly across all 3 frequency rows (at least 1 per row).
+define MakeRandomNontargetSig()
+{
+    sig  <- []
+    rows <- [[50, 240], [260, 740], [760, 1740]]
+    ## Guarantee at least one band per row
+    loop(r, rows)
+    {
+        lo <- Nth(r, 1)
+        hi <- Nth(r, 2)
+        f  <- lo + Round(Random() * (hi - lo))
+        PushOnEnd(sig, f)
+    }
+    ## Add 2 more bands in random rows
+    added <- 0
+    tries <- 0
+    while(added < 2 and tries < 200)
+    {
+        tries  <- tries + 1
+        ri     <- 1 + Round(Random() * 2)
+        r      <- Nth(rows, ri)
+        lo     <- Nth(r, 1)
+        hi     <- Nth(r, 2)
+        f      <- lo + Round(Random() * (hi - lo))
+        tooClose <- 0
+        loop(existing, sig)
+        {
+            if(Abs(f - existing) < 40) { tooClose <- 1 }
+        }
+        if(tooClose == 0)
+        {
+            PushOnEnd(sig, f)
+            added <- added + 1
+        }
+    }
+    return(sig)
+}
+
+
+## Generate a close foil: each Alpha band shifted by a medium offset (minShift..maxShift Hz)
+## in a random direction, staying within the same frequency row. Looks structurally similar
+## to Alpha but is consistently offset — requires careful comparison to reject.
+define MakeCloseFoilSig(alphaSig, minShift, maxShift)
+{
+    row1Lo <- 0;   row1Hi <- 250
+    row2Lo <- 250; row2Hi <- 750
+    row3Lo <- 750; row3Hi <- 1750
+
+    sig  <- []
+    loop(f, alphaSig)
+    {
+        shift <- minShift + Round(Random() * (maxShift - minShift))
+        if(Random() < 0.5) { shift <- 0 - shift }
+        nf <- f + shift
+        ## Clamp to row bounds so band stays in same row
+        rowLo <- 50
+        rowHi <- 1750
+        if(f >= row1Lo and f < row1Hi) { rowLo <- row1Lo + 10; rowHi <- row1Hi - 10 }
+        if(f >= row2Lo and f < row2Hi) { rowLo <- row2Lo + 10; rowHi <- row2Hi - 10 }
+        if(f >= row3Lo and f <= row3Hi) { rowLo <- row3Lo + 10; rowHi <- row3Hi - 10 }
+        if(nf < rowLo) { nf <- rowLo }
+        if(nf > rowHi) { nf <- rowHi }
+        PushOnEnd(sig, nf)
+    }
+    return(sig)
+}
+
+
+## Look up the alt-vessel signature for a given vessel_id.
+## vessels: list of vessel property objects.
+define GetAltSig(vesselId, vessels)
+{
+    altSig <- []
+    loop(v, vessels)
+    {
+        if(v.id != vesselId)
+        {
+            altSig <- v.sig
+        }
+    }
+    return(altSig)
+}
+
+
+## Look up a vessel object by id.
+define GetVessel(vesselId, vessels)
+{
+    result <- Nth(vessels, 1)
+    loop(v, vessels)
+    {
+        if(v.id == vesselId) { result <- v }
+    }
+    return(result)
+}
+
+
+## Jitter only the bearing (first element); preserve halfWidth (second element).
+define MakeJitteredHeadingSig(baseSig, sd)
+{
+    bearing   <- Nth(baseSig, 1)
+    halfWidth <- Nth(baseSig, 2)
+    jb <- bearing + Round(RandomNormal(0, sd))
+    if(jb < 0)   { jb <- jb + 360 }
+    if(jb >= 360){ jb <- jb - 360 }
+    return([jb, halfWidth])
+}
+
+
+## Dispatch to the right signal generator based on mode string.
+## For heading sigs (2-element [bearing, halfWidth]), jitter/combo only jitter bearing.
+define GenerateSignal(vesselId, mode, params, vessels)
+{
+    vessel <- GetVessel(vesselId, vessels)
+    baseSig <- vessel.sig
+    isHeading <- 0
+    if(Length(baseSig) == 2) { isHeading <- 1 }
+
+    sig <- baseSig
+
+    if(mode == "clean")
+    {
+        sig <- MakeCleanSig(baseSig)
+    }
+    if(mode == "jitter" or mode == "jittered")
+    {
+        sd <- params.jitter_sd
+        if(isHeading == 1)
+        {
+            sig <- MakeJitteredHeadingSig(baseSig, sd)
+        } else {
+            sig <- MakeJitteredSig(baseSig, sd)
+        }
+    }
+    if(mode == "noisy")
+    {
+        if(isHeading == 1)
+        {
+            sig <- MakeCleanSig(baseSig)
+        } else {
+            nMin <- params.n_noise_min
+            nMax <- params.n_noise_max
+            sig <- MakeNoisySig(baseSig, nMin, nMax)
+        }
+    }
+    if(mode == "mimic")
+    {
+        altSig <- GetAltSig(vesselId, vessels)
+        nMimic <- params.n_mimic
+        sig <- MakeMimicSig(baseSig, altSig, nMimic)
+    }
+    if(mode == "prob")
+    {
+        pShow <- params.p_show
+        sig <- MakeProbSig(baseSig, pShow)
+    }
+    if(mode == "combo")
+    {
+        if(isHeading == 1)
+        {
+            sig <- MakeJitteredHeadingSig(baseSig, params.jitter_sd)
+        } else {
+            sd   <- params.jitter_sd
+            nMin <- params.n_noise_min
+            nMax <- params.n_noise_max
+            sig <- MakeComboSig(baseSig, sd, nMin, nMax)
+        }
+    }
+
+    return(sig)
+}
+
+
+## ============================================================
+## SIGNAL ANALYSIS HELPERS
+## ============================================================
+
+define CountMatches(sig, baseSig)
+{
+    n <- 0
+    loop(f, sig)
+    {
+        loop(b, baseSig)
+        {
+            if(Abs(f - b) < 5) { n <- n + 1 }
+        }
+    }
+    return(n)
+}
+
+
+define SigToStr(sig)
+{
+    s <- ""
+    first <- 1
+    loop(f, sig)
+    {
+        if(first == 1)
+        {
+            s <- "" + f
+            first <- 0
+        } else {
+            s <- s + ";" + f
+        }
+    }
+    return(s)
+}
+
+
+## ============================================================
+## DISPLAY
+## ============================================================
+
+## Look up a cached stripe PNG for row_num (1-3), random variant 0-7.
+define StripeFilename(rowNum)
+{
+    v    <- Round(Random() * 7)
+    vstr <- "" + v
+    if(v < 10) { vstr <- "0" + v }
+    return("img/stripes/stripe_r" + rowNum + "_v" + vstr + ".png")
+}
+
+
+## Render frequency stripes on the waterfall background.
+## Returns list of created image objects (for later removal).
+define RenderNarrowband(sig, zoom, dispY)
+{
+    bgW  <- 2000
+    stripeNativeW <- 80
+    stripeNativeH <- 283
+    row1Top <- 60;  row2Top <- 381;  row3Top <- 702
+    contentLeft <- 50
+    contentW    <- 1950
+    row1Lo <- 0;   row1Hi <- 250
+    row2Lo <- 250; row2Hi <- 750
+    row3Lo <- 750; row3Hi <- 1750
+
+    bgScreenLeft <- Round(gVideoWidth/2 - bgW * zoom / 2.0)
+    bgScreenTop  <- Round(dispY        - 1000 * zoom / 2.0)
+
+    imgW <- Round(stripeNativeW * zoom)
+    imgH <- Round(stripeNativeH * zoom)
+
+    imgs <- []
+
+    loop(freq, sig)
+    {
+        rowTop  <- 0
+        rowNum  <- 0
+        freqLo  <- 0
+        freqHi  <- 1
+        inRow   <- 0
+
+        if(freq >= row1Lo and freq < row1Hi)
+        {
+            rowTop <- row1Top; rowNum <- 1
+            freqLo <- row1Lo;  freqHi <- row1Hi; inRow <- 1
+        }
+        if(freq >= row2Lo and freq < row2Hi)
+        {
+            rowTop <- row2Top; rowNum <- 2
+            freqLo <- row2Lo;  freqHi <- row2Hi; inRow <- 1
+        }
+        if(freq >= row3Lo and freq <= row3Hi)
+        {
+            rowTop <- row3Top; rowNum <- 3
+            freqLo <- row3Lo;  freqHi <- row3Hi; inRow <- 1
+        }
+
+        if(inRow == 1)
+        {
+            freqXNative <- contentLeft + Round((freq - freqLo) / (freqHi - freqLo) * contentW)
+            screenX <- bgScreenLeft + Round(freqXNative * zoom)
+            screenY <- bgScreenTop  + Round((rowTop + 5 + stripeNativeH / 2) * zoom)
+
+            fname <- StripeFilename(rowNum)
+            img   <- MakeImage(fname)
+            img.zoomx <- zoom * gStripeStretch
+            img.zoomy <- zoom
+            AddObject(img, gWin)
+            Move(img, screenX, screenY)
+            PushOnEnd(imgs, img)
+        }
+    }
+
+    return(imgs)
+}
+
+
+define ClearDisplay(imgs)
+{
+    loop(img, imgs) { RemoveObject(img, gWin) }
+}
+
+
+## Render a bearing contact on the heading display.
+## sig = [bearing, halfWidthDeg] where bearing is 0-359.
+## Draws a bright center bar plus a wider dim glow bar.
+## Returns list of canvas objects (for later removal via ClearDisplay).
+## contactType: "solid" (rectangle bar) or "noisy" (stripe image — biological contact).
+define RenderHeading(sig, zoom, dispY, contactType)
+{
+    bgNativeW <- 2000
+    bgNativeH <- 200
+
+    bgScreenLeft <- Round(gVideoWidth / 2 - bgNativeW * zoom / 2.0)
+    bgScreenCY   <- dispY
+
+    bearing   <- Nth(sig, 1)
+    halfWidth <- Nth(sig, 2)
+
+    bearingX <- Round(bearing / 360.0 * bgNativeW)
+    screenX  <- bgScreenLeft + Round(bearingX * zoom)
+
+    imgs <- []
+
+    if(contactType == "noisy")
+    {
+        ## Biological contact: dense noisy blob image, randomly selected variant
+        v     <- Round(Random() * 7)
+        fname <- "img/stripes/bio_heading_v0" + v + ".png"
+        stripeNativeH <- 283
+        barH  <- Round(bgNativeH * zoom * 0.85)
+        ## Fixed width: ~20px on screen regardless of halfWidth parameter
+        barW  <- Round(20 * zoom * 4)
+        if(barW < 12) { barW <- 12 }
+        stripeImg <- MakeImage(fname)
+        stripeImg.zoomx <- barW / 40.0
+        stripeImg.zoomy <- barH / stripeNativeH
+        AddObject(stripeImg, gWin)
+        Move(stripeImg, screenX, bgScreenCY)
+        PushOnEnd(imgs, stripeImg)
+    } else {
+        ## Solid contact: glow + center rectangle bars
+        glowW   <- Round(halfWidth * 2 * bgNativeW / 360.0 * zoom) + 6
+        if(glowW < 8) { glowW <- 8 }
+        glowH   <- Round(bgNativeH * zoom * 0.7)
+        glowCol <- MakeColorRGB(0, 120, 0)
+        glowImg <- Rectangle(screenX, bgScreenCY, glowW, glowH, glowCol, 1)
+        AddObject(glowImg, gWin)
+        Move(glowImg, screenX, bgScreenCY)
+        PushOnEnd(imgs, glowImg)
+
+        barW   <- Round(halfWidth * bgNativeW / 360.0 * zoom) + 2
+        if(barW < 4) { barW <- 4 }
+        barH   <- Round(bgNativeH * zoom * 0.85)
+        barCol <- MakeColorRGB(60, 230, 60)
+        barImg <- Rectangle(screenX, bgScreenCY, barW, barH, barCol, 1)
+        AddObject(barImg, gWin)
+        Move(barImg, screenX, bgScreenCY)
+        PushOnEnd(imgs, barImg)
+    }
+
+    return(imgs)
+}
+
+
+## Build a heading thumbnail canvas showing bearing strip + contact.
+## sig = [bearing, halfWidthDeg]. contactType: "solid" or "noisy".
+define MakeHeadingThumbnail(sig, x, y, win, contactType, zoom)
+{
+    ## Build at actual display pixel size — avoid zoom on canvas (breaks at zoom<1)
+    tw <- Round(240 * zoom)
+    th <- Round(60  * zoom)
+    if(tw < 1) { tw <- 1 }
+    if(th < 1) { th <- 1 }
+
+    bgDark  <- MakeColorRGB(0, 20, 0)
+    lineCol <- MakeColorRGB(0, 160, 0)
+    glowCol <- MakeColorRGB(0, 100, 0)
+    barCol  <- MakeColorRGB(60, 230, 60)
+
+    canvas <- MakeCanvas(tw, th, bgDark)
+    AddObject(canvas, win)
+    Move(canvas, x, y)
+
+    baseline <- Rectangle(tw/2, th/2, tw, 2, lineCol, 1)
+    AddObject(baseline, canvas)
+    Draw(baseline)
+
+    cx <- tw / 2
+
+    extras <- []
+
+    if(contactType == "noisy")
+    {
+        fname     <- "img/stripes/bio_heading_v00.png"
+        barW      <- Round(30 * zoom)
+        if(barW < 1) { barW <- 1 }
+        stripeImg <- MakeImage(fname)
+        stripeImg.zoomx <- barW / 40.0
+        stripeImg.zoomy <- (th - 4) / 283.0
+        AddObject(stripeImg, canvas)
+        Move(stripeImg, cx, th/2)
+        Draw(stripeImg)
+        PushOnEnd(extras, stripeImg)
+    } else {
+        glowW <- Round(20 * zoom)
+        barW2 <- Round(8  * zoom)
+        if(glowW < 1) { glowW <- 1 }
+        if(barW2 < 1) { barW2 <- 1 }
+        glowBar <- Rectangle(cx, th/2, glowW, th - 4, glowCol, 1)
+        AddObject(glowBar, canvas)
+        Draw(glowBar)
+
+        bar <- Rectangle(cx, th/2, barW2, th - 4, barCol, 1)
+        AddObject(bar, canvas)
+        Draw(bar)
+        PushOnEnd(extras, glowBar)
+        PushOnEnd(extras, bar)
+    }
+
+    Draw(canvas)
+
+    obj          <- MakeCustomObject("heading_thumb")
+    obj.canv     <- canvas
+    obj.baseline <- baseline
+    obj.extras   <- extras
+    obj.bgDark   <- bgDark
+    obj.lineCol  <- lineCol
+    obj.glowCol  <- glowCol
+    obj.barCol   <- barCol
+    obj.x        <- x
+    obj.y        <- y
+    obj.width    <- tw
+    obj.height   <- th
+    return(obj)
+}
+
+
+## ============================================================
+## SCORING AND FEEDBACK
+## ============================================================
+
+## Returns [correct, points, outcomeLabel]
+define ScoreTrial(vesselId, response, blockCfg)
+{
+    correct <- 0
+    if(response == vesselId) { correct <- 1 }
+
+    outcomeLabel <- "cr"
+    points <- 0
+
+    fbType <- blockCfg.feedback
+
+    if(fbType == "accuracy")
+    {
+        if(correct == 1)
+        {
+            outcomeLabel <- "hit"
+            points <- 0
+        } else {
+            outcomeLabel <- "miss"
+            points <- 0
+        }
+    }
+
+    if(fbType == "payoff")
+    {
+        if(correct == 1)
+        {
+            outcomeLabel <- "hit"
+            points <- blockCfg.payoff_hit
+        } else {
+            outcomeLabel <- "miss"
+            points <- blockCfg.payoff_miss
+        }
+    }
+
+    if(fbType == "none")
+    {
+        if(correct == 1) { outcomeLabel <- "hit" }
+        else             { outcomeLabel <- "miss" }
+    }
+
+    return([correct, points, outcomeLabel])
+}
+
+
+## Update the persistent score HUD label.
+define UpdateScoreHUD(points)
+{
+    gCumulScore <- gCumulScore + points
+    gScoreHUD.text <- "Score: " + gCumulScore
+    Draw()
+}
+
+
+## Show feedback text on screen for 600ms; update score HUD if payoff mode.
+##if click ==1, then the message will inclued 'click to continue' and require clicking
+##to recenter mouse (without a forced delay)
+define ApplyFeedback(correct, points, blockCfg, fbY, click:0)
+{
+    fbType <- blockCfg.feedback
+    
+      if(click)
+	{
+	  add <- "! Click to continue."}
+	else{
+	 add <- ""
+	}
+
+
+
+    if(fbType == "accuracy")
+    {
+        if(correct == 1)
+        {
+            msg <- MakeLabel("CORRECT"+add, gFontFB)
+        } else {
+            msg <- MakeLabel("INCORRECT"+add, gFontFB)
+        }
+        AddObject(msg, gWin)
+        Move(msg, Round(gVideoWidth/2), fbY)
+        Draw()
+	 if(click)
+	 {
+	   WaitForClickOnTarget([msg],[1])
+	 }else{
+           Wait(600)
+	}
+	
+        RemoveObject(msg, gWin)
+	Draw()
+    }
+
+    if(fbType == "payoff")
+    {
+        UpdateScoreHUD(points)
+        if(points >= 0)
+        {
+            ptStr <- "+" + points + " pts" +add
+        } else {
+            ptStr <- "" + points + " pts" + add
+        }
+        msg <- MakeLabel(ptStr, gFontFB)
+        AddObject(msg, gWin)
+        Move(msg, Round(gVideoWidth/2), fbY)
+        Draw()
+       if(click)
+	 {  
+	   WaitForClickOnTarget([msg],[1])
+	 }else{
+           Wait(600)
+	}
+        
+        RemoveObject(msg, gWin)
+	Draw()
+    }
+}
+
+
+## ============================================================
+## TRIAL RUNNER
+## ============================================================
+
+## Choose vessel_id for this trial given base_rate and vessel list.
+## 2 vessels: base_rate = P(vessel 1), 1-base_rate = P(vessel 2).
+## 3+ vessels: uniform across all vessels (base_rate ignored).
+define PickVessel(blockCfg, vessels)
+{
+    nVessels <- Length(vessels)
+    v1       <- Nth(vessels, 1)
+    vesselId <- v1.id
+
+    if(nVessels == 2)
+    {
+        baseRate <- blockCfg.base_rate
+        v2 <- Nth(vessels, 2)
+        if(Random() < baseRate)
+        {
+            vesselId <- v1.id
+        } else {
+            vesselId <- v2.id
+        }
+    } else {
+        idx    <- 1 + Floor(Random() * nVessels)
+        if(idx > nVessels) { idx <- nVessels }
+        tmpV   <- Nth(vessels, idx)
+        vesselId <- tmpV.id
+    }
+
+    return(vesselId)
+}
+
+
+## Show a 4-point confidence scale after a response.
+## Returns 1 (low) to 4 (certain).
+define CollectConfidence(fbY)
+{
+    confLabels <- ["1: Guess", "2: Unsure", "3: Fairly sure", "4: Certain"]
+    btnW   <- 160
+    btnH   <- 55
+    gap    <- 16
+    totalW <- 4 * btnW + 3 * gap
+    startX <- Round(gVideoWidth / 2 - totalW / 2 + btnW / 2)
+    btnY   <- fbY - 20
+
+    promptFont <- MakeFont(gPEBLBaseFont, 0, 20, MakeColor("white"), MakeColor("black"), 0)
+    prompt     <- MakeLabel("How confident are you?", promptFont)
+    AddObject(prompt, gWin)
+    Move(prompt, Round(gVideoWidth/2), btnY - 50)
+
+    btnObjs  <- []
+    lblObjs  <- []
+    btnIds   <- []
+    btnFont  <- MakeFont(gPEBLBaseFont, 0, 17, MakeColor("white"), MakeColor("black"), 0)
+    btnCol   <- MakeColorRGB(40, 80, 120)
+
+    i <- 1
+    while(i <= 4)
+    {
+        bx  <- startX + (i - 1) * (btnW + gap)
+        btn <- Rectangle(bx, btnY, btnW, btnH, btnCol, 1)
+        lbl <- MakeLabel(Nth(confLabels, i), btnFont)
+        AddObject(btn, gWin)
+        AddObject(lbl, gWin)
+        Move(lbl, bx, btnY)
+        PushOnEnd(btnObjs, btn)
+        PushOnEnd(lblObjs, lbl)
+        PushOnEnd(btnIds, i)
+        i <- i + 1
+    }
+
+    Draw()
+    conf <- WaitForClickOnTarget(btnObjs, btnIds)
+
+    RemoveObject(prompt, gWin)
+    loop(b, btnObjs) { RemoveObject(b, gWin) }
+    loop(l, lblObjs) { RemoveObject(l, gWin) }
+
+    return(conf)
+}
+
+
+## Build the button list for WaitForClickOnTarget.
+## When show_thumbnails=1, uses the thumbnail canvas as click target.
+## When show_thumbnails=0, uses v.btn (the plain labeled button rectangle).
+define BuildButtons(vessels, showThumbnails)
+{
+    btnObjs <- []
+    btnIds  <- []
+    loop(v, vessels)
+    {
+        if(showThumbnails == 1)
+        {
+            PushOnEnd(btnObjs, v.thumbImg)
+        } else {
+            PushOnEnd(btnObjs, v.btn)
+        }
+        PushOnEnd(btnIds, v.id)
+    }
+    return([btnObjs, btnIds])
+}
+
+
+## Hide thumbnails/labels; show plain labeled buttons at the same positions.
+define SetupNoThumbDisplay(vessels)
+{
+    loop(v, vessels)
+    {
+        Hide(v.thumbImg)
+        Hide(v.lbl)
+        Move(v.btn,    v.btnX, v.btnY)
+        Move(v.btnLbl, v.btnX, v.btnY)
+    }
+    Draw()
+}
+
+
+## Restore thumbnails; hide plain buttons.
+define TeardownNoThumbDisplay(vessels)
+{
+    loop(v, vessels)
+    {
+        Show(v.thumbImg)
+        Show(v.lbl)
+        Move(v.btn,    gOffscreenX, v.btnY)
+        Move(v.btnLbl, gOffscreenX, v.btnY)
+    }
+    Draw()
+}
+
+
+## ============================================================
+## GO/NO-GO TRIAL
+## ============================================================
+
+## Score a gonogo trial.
+## isTarget=1: go-vessel shown (correct: respond). isTarget=0: nogo-vessel shown (correct: withhold).
+## responded=1: click within window. responded=0: timeout (withheld).
+## Returns [correct, points, outcomeLabel]
+define ScoreGonogTrial(isTarget, responded, blockCfg)
+{
+    correct      <- 0
+    points       <- 0
+    outcomeLabel <- "cr"
+
+    if(isTarget == 1 and responded == 1) { correct <- 1; outcomeLabel <- "hit"  }
+    if(isTarget == 1 and responded == 0) { correct <- 0; outcomeLabel <- "miss" }
+    if(isTarget == 0 and responded == 1) { correct <- 0; outcomeLabel <- "fa"   }
+    if(isTarget == 0 and responded == 0) { correct <- 1; outcomeLabel <- "cr"   }
+
+    fbType <- blockCfg.feedback
+    if(fbType == "payoff")
+    {
+        if(outcomeLabel == "hit")  { points <- blockCfg.payoff_hit  }
+        if(outcomeLabel == "miss") { points <- blockCfg.payoff_miss }
+        if(outcomeLabel == "fa")   { points <- blockCfg.payoff_fa   }
+        if(outcomeLabel == "cr")   { points <- blockCfg.payoff_cr   }
+    }
+
+    return([correct, points, outcomeLabel])
+}
+
+
+## Run a single go/no-go trial.
+## Two-stimulus go/no-go trial.
+## Every trial shows a vessel: the go-vessel (target) or a nogo-vessel (non-target).
+## isTarget=1 → go-vessel shown (correct response: click).
+## isTarget=0 → first nogo-vessel shown (correct response: withhold).
+## base_rate controls how often the go-vessel appears.
+## Returns same format as RunTrial: [vesselId, response, rt, correct, points, outcomeLabel, abstime, sig]
+define RunGonogTrial(blockCfg, vessels, noiseImgs, dispY, fbY, offscreenX)
+{
+    goVessel   <- blockCfg.gonogo_go_vessel
+    respWindow <- blockCfg.gonogo_response_window
+    baseRate   <- blockCfg.base_rate
+    mode       <- blockCfg.signal_mode
+    params     <- blockCfg.signal_params
+
+    ## Pick target (go) or non-target (nogo) based on base_rate
+    isTarget <- 1
+    if(Random() > baseRate) { isTarget <- 0 }
+
+    ## Select which vessel to show
+    vesselId <- goVessel
+    if(isTarget == 0)
+    {
+        ## Use first vessel that is NOT the go-vessel as the nogo stimulus
+        loop(v, vessels)
+        {
+            if(v.id != goVessel and vesselId == goVessel)
+            {
+                vesselId <- v.id
+            }
+        }
+    }
+
+    ## Generate signal and render stimulus
+    vessel    <- GetVessel(vesselId, vessels)
+    sig       <- GenerateSignal(vesselId, mode, params, vessels)
+    noiseImg  <- Nth(noiseImgs, 1)
+    stripImgs <- []
+    if(blockCfg.display == "heading")
+    {
+        stripImgs <- RenderHeading(sig, gZoom, dispY, vessel.contact_type)
+    } else {
+        noiseChoice <- Round(Random() * (Length(noiseImgs) - 1)) + 1
+        noiseImg    <- Nth(noiseImgs, noiseChoice)
+        Move(noiseImg, Round(gVideoWidth/2), dispY)
+        stripImgs <- RenderNarrowband(sig, gZoom, dispY)
+    }
+
+    Draw()
+
+    absT <- GetTime()
+    t0   <- GetTime()
+    out  <- WaitForMouseButtonWithTimeout(respWindow)
+    rt   <- GetTime() - t0
+
+    responded <- 0
+    if(IsList(out)) { responded <- 1 }
+
+    ## Show response box around the go-vessel thumbnail immediately on click
+    if(responded == 1)
+    {
+        goV <- GetVessel(goVessel, vessels)
+        Move(gResponseBox, goV.thumb.x, goV.thumb.y)
+        Draw()
+    }
+
+    ## Hold display for remainder of response window before clearing
+    remaining <- respWindow - rt
+    if(remaining > 0) { Wait(remaining) }
+
+    resp <- "nogo"
+    if(responded == 1) { resp <- "go" }
+
+    scoreData    <- ScoreGonogTrial(isTarget, responded, blockCfg)
+    correct      <- First(scoreData)
+    points       <- Second(scoreData)
+    outcomeLabel <- Third(scoreData)
+
+    Move(gResponseBox, offscreenX, dispY)
+    Move(noiseImg, offscreenX, dispY)
+    ClearDisplay(stripImgs)
+    Draw()
+
+    ApplyFeedback(correct, points, blockCfg, fbY)
+
+    Wait(blockCfg.isi)
+
+    return([vesselId, resp, rt, correct, points, outcomeLabel, absT, sig, ""])
+}
+
+
+## ============================================================
+## CHOICE TRIAL
+## ============================================================
+
+## Run a single trial. Returns trial_result list:
+##   [vesselId, response, rt, correct, points, outcomeLabel, abstime, sig]
+define RunTrial(blockCfg, vessels, noiseImgs, dispY, fbY, offscreenX)
+{
+    vesselId   <- PickVessel(blockCfg, vessels)
+    vessel     <- GetVessel(vesselId, vessels)
+    mode       <- blockCfg.signal_mode
+    params     <- blockCfg.signal_params
+    sig        <- GenerateSignal(vesselId, mode, params, vessels)
+
+    ## Render stimulus
+    noiseImg  <- Nth(noiseImgs, 1)
+    stripImgs <- []
+    if(blockCfg.display == "heading")
+    {
+        stripImgs <- RenderHeading(sig, gZoom, dispY, vessel.contact_type)
+    } else {
+        noiseChoice <- Round(Random() * (Length(noiseImgs) - 1)) + 1
+        noiseImg    <- Nth(noiseImgs, noiseChoice)
+        Move(noiseImg, Round(gVideoWidth/2), dispY)
+        stripImgs <- RenderNarrowband(sig, gZoom, dispY)
+    }
+
+    Draw()
+
+    ## Collect response
+    btnData <- BuildButtons(vessels, blockCfg.show_thumbnails)
+    btnObjs <- First(btnData)
+    btnIds  <- Second(btnData)
+
+    absT <- GetTime()
+    t0   <- GetTime()
+    resp <- WaitForClickOnTarget(btnObjs, btnIds)
+    rt   <- GetTime() - t0
+
+    ## Score
+    scoreData    <- ScoreTrial(vesselId, resp, blockCfg)
+    correct      <- First(scoreData)
+    points       <- Second(scoreData)
+    outcomeLabel <- Third(scoreData)
+
+    ## Clear stimulus
+    Move(noiseImg, offscreenX, dispY)
+    ClearDisplay(stripImgs)
+    Draw()
+
+    ## Confidence rating (before feedback so rating is not contaminated)
+    confidence <- ""
+    if(blockCfg.collect_confidence == 1)
+    {
+        confidence <- CollectConfidence(fbY)
+    }
+
+    ApplyFeedback(correct, points, blockCfg, fbY,1)
+    if(blockCfg.feedback != "none")
+    {
+        Wait(blockCfg.isi)
+    }
+
+    return([vesselId, resp, rt, correct, points, outcomeLabel, absT, sig, confidence])
+}
+
+
+## ============================================================
+## SIMON TASK
+## ============================================================
+
+## Show L/R rule labels above thumbnails; return label list for teardown.
+## Reposition vessel thumbnails and labels so that the vessel with response_side=="left"
+## is on the left side of the screen and response_side=="right" is on the right.
+## Call after applying per-block vessel overrides, before SetupSimonDisplay.
+define RepositionSimonThumbs(vessels)
+{
+    nV    <- Length(vessels)
+    tbgW  <- Round(gVideoWidth * 0.125)
+    tzoomX <- tbgW / 240.0
+    tbgH  <- Round(60 * tzoomX)
+    thumbY <- Round(gVideoHeight * 0.82)
+    safeY  <- gVideoHeight - Round(tbgH / 2) - 80
+    if(thumbY > safeY) { thumbY <- safeY }
+    lblY  <- thumbY + Round(tbgH / 2) + 28
+
+    loop(v, vessels)
+    {
+        ## Compute target x: left vessel at idx=1 position, right at idx=nV position
+        if(v.response_side == "left")
+        {
+            tx <- Round(gVideoWidth * (1.0 / (nV + 1.0)))
+        } else {
+            tx <- Round(gVideoWidth * (nV / (nV + 1.0)))
+        }
+        Move(v.thumbImg, tx, thumbY)
+        Move(v.lbl,      tx, lblY)
+    }
+    Draw()
+}
+
+
+define SetupSimonDisplay(vessels, blockCfg)
+{
+    fontL <- MakeFont(gPEBLBaseFont, 1, 22, MakeColorRGB(60, 220, 60),  MakeColor("black"), 1)
+    fontR <- MakeFont(gPEBLBaseFont, 1, 22, MakeColorRGB(60, 200, 220), MakeColor("black"), 1)
+    simonLabels <- []
+    labelY <- gVideoHeight - 60
+    leftX  <- Round(gVideoWidth * 0.25)
+    rightX <- Round(gVideoWidth * 0.75)
+
+    ## Build side→name mapping from vessels
+    leftName  <- ""
+    rightName <- ""
+    loop(v, vessels)
+    {
+        if(v.response_side == "left")  { leftName  <- v.name }
+        if(v.response_side == "right") { rightName <- v.name }
+    }
+
+    leftLbl <- MakeLabel(leftName + " — LEFT", fontL)
+    AddObject(leftLbl, gWin)
+    Move(leftLbl, leftX, labelY)
+    PushOnEnd(simonLabels, leftLbl)
+
+    rightLbl <- MakeLabel(rightName + " — RIGHT", fontR)
+    AddObject(rightLbl, gWin)
+    Move(rightLbl, rightX, labelY)
+    PushOnEnd(simonLabels, rightLbl)
+
+    Draw()
+    return(simonLabels)
+}
+
+
+define TeardownSimonDisplay(simonLabels)
+{
+    loop(lbl, simonLabels) { RemoveObject(lbl, gWin) }
+    Draw()
+}
+
+
+## Pick a bearing for this trial.
+## vessel.bearings is a list; pick one randomly.
+## If no bearings defined, use vessel sig bearing directly.
+define PickBearing(vessel)
+{
+    bearing <- Nth(vessel.sig, 1)
+    if(PropertyExists(vessel, "bearings"))
+    {
+        bl  <- vessel.bearings
+        idx <- Round(Random() * (Length(bl) - 1)) + 1
+        bearing <- Nth(bl, idx)
+    }
+    return(bearing)
+}
+
+
+## Returns [correct, points, outcomeLabel]
+define ScoreSimonTrial(responseSide, vessel, blockCfg)
+{
+    correct      <- 0
+    points       <- 0
+    outcomeLabel <- "wrong"
+    if(responseSide == vessel.response_side)
+    {
+        correct      <- 1
+        outcomeLabel <- "correct"
+        points       <- blockCfg.payoff_hit
+    } else {
+        points <- blockCfg.payoff_miss
+    }
+    return([correct, points, outcomeLabel])
+}
+
+
+## Run a single Simon trial.
+## Returns extended result list:
+##   [vesselId, responseSide, rt, correct, points, outcomeLabel, absT, sig, bearing, congruent]
+define RunSimonTrial(blockCfg, vessels, noiseImgs, dispY, fbY, offscreenX)
+{
+    vesselId <- PickVessel(blockCfg, vessels)
+    vessel   <- GetVessel(vesselId, vessels)
+    mode     <- blockCfg.signal_mode
+    params   <- blockCfg.signal_params
+
+    ## Pick bearing for this trial (may differ from vessel's canonical bearing)
+    bearing   <- PickBearing(vessel)
+    halfWidth <- Nth(vessel.sig, 2)
+    sig       <- [bearing, halfWidth]
+
+    ## Stimulus side: bearings 0-179 = left half, 180-359 = right half
+    stimSide <- "left"
+    if(bearing >= 180) { stimSide <- "right" }
+
+    congruent <- 0
+    if(stimSide == vessel.response_side) { congruent <- 1 }
+
+    ## Render
+    stripImgs <- RenderHeading(sig, gZoom, dispY, vessel.contact_type)
+    Draw()
+
+    absT <- GetTime()
+    t0   <- GetTime()
+    WaitForDownClick()
+    rt   <- GetTime() - t0
+
+    mousePos     <- GetMouseCursorPosition()
+    responseSide <- "left"
+    if(First(mousePos) >= Round(gVideoWidth / 2)) { responseSide <- "right" }
+
+    scoreData    <- ScoreSimonTrial(responseSide, vessel, blockCfg)
+    correct      <- First(scoreData)
+    points       <- Second(scoreData)
+    outcomeLabel <- Third(scoreData)
+
+    ApplyFeedback(correct, points, blockCfg, fbY,1)
+
+    ClearDisplay(stripImgs)
+    Draw()
+    Wait(blockCfg.isi)
+
+    return([vesselId, responseSide, rt, correct, points, outcomeLabel, absT, sig, "", bearing, congruent])
+}
+
+
+## ============================================================
+## CUED TRIAL (heading click → narrowband ID)
+## ============================================================
+
+## Determine which vessel side (left/right of centre) a vessel "belongs to"
+## based on cue_validity and the vessel's canonical bearing.
+## Returns the bearing to display for this vessel on this trial.
+## side_map: list [[vesselId, side], ...]  built once per block in RunCuedTrial.
+
+## Pick which vessel to show, and assign it a bearing that respects cue_validity.
+## right-side bearing (180-359) → 80% enemy (vessel 2), 20% friendly (vessel 1)
+## left-side  bearing (0-179)   → 80% friendly (vessel 1), 20% enemy (vessel 2)
+##
+## Algorithm:
+##   1. Pick vessel id by base_rate as usual.
+##   2. With probability cue_validity, put it on its "home" side.
+##      Otherwise put it on the other side (incongruent cue).
+##   3. Sample a bearing uniformly from [0,179] or [180,359] accordingly.
+## Returns [vesselId, bearing, cueCongruent]
+## Pick vessel and assign a cued bearing.
+## Vessel 1 home side = left (0-179); vessel 2 home side = right (180-359).
+## With probability cue_validity the bearing matches the vessel's home side (congruent).
+## Returns [vesselId, bearing, cueCongruent]
+define PickCuedStimulus(blockCfg, vessels)
+{
+    validity <- blockCfg.cue_validity
+    vesselId <- PickVessel(blockCfg, vessels)
+
+    ## Bearing is fully random — no spatial home-side mapping
+    bearing <- Round(Random() * 359)
+
+    ## Congruent: cue glyph matches the actual vessel's contact_type
+    ## Incongruent: cue glyph is the OTHER vessel's contact_type
+    cueCongruent <- 1
+    if(Random() >= validity) { cueCongruent <- 0 }
+
+    ## cueContactType: what glyph to flash in Phase 1
+    vessel <- GetVessel(vesselId, vessels)
+    cueContactType <- vessel.contact_type
+    if(cueCongruent == 0)
+    {
+        ## Find the other vessel's contact_type
+        loop(v, vessels)
+        {
+            if(v.id != vesselId) { cueContactType <- v.contact_type }
+        }
+    }
+
+    return([vesselId, bearing, cueCongruent, cueContactType])
+}
+
+
+## Run a Posner-style cued trial.
+##   Phase 1: heading contact shown briefly (cue_duration ms) — no response required.
+##   Phase 2: heading clears; narrowband waterfall appears; participant clicks vessel button.
+## Returns [vesselId, response, cueRt, nbRt, correct, points, outcomeLabel,
+##          absT, nbSig, bearing, cueCongruent]
+define RunCuedTrial(blockCfg, vessels, noiseImgs, headDispY, nbDispY, fbY, offscreenX)
+{
+    mode        <- blockCfg.signal_mode
+    params      <- blockCfg.signal_params
+    cueDuration <- blockCfg.cue_duration
+    cueSoa      <- blockCfg.cue_soa
+
+    stimData       <- PickCuedStimulus(blockCfg, vessels)
+    vesselId       <- Nth(stimData, 1)
+    bearing        <- Nth(stimData, 2)
+    cueCongruent   <- Nth(stimData, 3)
+    cueContactType <- Nth(stimData, 4)
+
+    headSig  <- [bearing, 8]
+
+    ## --- Pre-cue blank ---
+    if(cueSoa > 0) { Wait(cueSoa) }
+
+    ## --- Phase 1: cue glyph (may be incongruent contact_type) ---
+    headImgs <- RenderHeading(headSig, gZoom, headDispY, cueContactType)
+    Draw()
+    absT <- GetTime()
+    Wait(cueDuration)
+
+    ## --- Post-cue blank (contact removed, heading strip remains) ---
+    ClearDisplay(headImgs)
+    Draw()
+    if(cueSoa > 0) { Wait(cueSoa) }
+
+    ## --- Phase 2: narrowband stimulus ---
+    nbSig       <- GenerateSignal(vesselId, mode, params, vessels)
+    noiseChoice <- Round(Random() * (Length(noiseImgs) - 1)) + 1
+    noiseImg    <- Nth(noiseImgs, noiseChoice)
+    Move(noiseImg, Round(gVideoWidth/2), nbDispY)
+    stripImgs   <- RenderNarrowband(nbSig, gZoom, nbDispY)
+    Move(gBg, Round(gVideoWidth/2), nbDispY)
+    Draw()
+
+    btnData <- BuildButtons(vessels, blockCfg.show_thumbnails)
+    btnObjs <- First(btnData)
+    btnIds  <- Second(btnData)
+
+    t0   <- GetTime()
+    resp <- WaitForClickOnTarget(btnObjs, btnIds)
+    nbRt <- GetTime() - t0
+
+    scoreData    <- ScoreTrial(vesselId, resp, blockCfg)
+    correct      <- First(scoreData)
+    points       <- Second(scoreData)
+    outcomeLabel <- Third(scoreData)
+
+    Move(noiseImg, offscreenX, nbDispY)
+    ClearDisplay(stripImgs)
+    Move(gBg, offscreenX, nbDispY)
+    Draw()
+
+    ApplyFeedback(correct, points, blockCfg, fbY,1)
+    if(blockCfg.feedback != "none")
+    {
+        Wait(blockCfg.isi)
+    }
+
+    return([vesselId, resp, cueDuration, nbRt, correct, points, outcomeLabel,
+            absT, nbSig, bearing, cueCongruent])
+}
+
+
+define LogCuedTrial(dataFile, blockCfg, trialNum, trialResult, vessels)
+{
+    vesselId     <- Nth(trialResult, 1)
+    resp         <- Nth(trialResult, 2)
+    headingRt    <- Nth(trialResult, 3)
+    nbRt         <- Nth(trialResult, 4)
+    correct      <- Nth(trialResult, 5)
+    points       <- Nth(trialResult, 6)
+    outcomeLabel <- Nth(trialResult, 7)
+    absT         <- Nth(trialResult, 8)
+    nbSig        <- Nth(trialResult, 9)
+    bearing      <- Nth(trialResult, 10)
+    cueCongruent <- Nth(trialResult, 11)
+
+    vessel     <- GetVessel(vesselId, vessels)
+    vesselName <- vessel.name
+    baseSig    <- vessel.sig
+    nMatches   <- CountMatches(nbSig, baseSig)
+    nShown     <- Length(nbSig)
+    nExtra     <- nShown - nMatches
+    nMissing   <- Length(baseSig) - nMatches
+
+    row <- [gSubNum, blockCfg.task_id, blockCfg.id, blockCfg.response_mode,
+            trialNum, vesselId, vesselName, resp, correct, outcomeLabel, points,
+            blockCfg.signal_mode, headingRt, nbRt, absT,
+            SigToStr(baseSig), SigToStr(nbSig), nShown, nExtra, nMissing,
+            bearing, cueCongruent, "", "", ""]
+    FilePrint(dataFile, ConcatenateList(row, ","))
+}
+
+
+
+
+## ============================================================
+## DATA LOGGING
+## ============================================================
+
+define LogTrial(dataFile, blockCfg, trialNum, trialResult, vessels)
+{
+    vesselId     <- Nth(trialResult, 1)
+    resp         <- Nth(trialResult, 2)
+    rt           <- Nth(trialResult, 3)
+    correct      <- Nth(trialResult, 4)
+    points       <- Nth(trialResult, 5)
+    outcomeLabel <- Nth(trialResult, 6)
+    absT         <- Nth(trialResult, 7)
+    sig          <- Nth(trialResult, 8)
+    confidence   <- Nth(trialResult, 9)
+
+    ## Simon-only extra columns (positions 10-11); blank for other modes
+    bearing   <- ""
+    congruent <- ""
+    if(blockCfg.response_mode == "simon")
+    {
+        bearing   <- Nth(trialResult, 10)
+        congruent <- Nth(trialResult, 11)
+    }
+
+
+    vesselName <- "unknown"
+    baseSig    <- []
+    nMatches   <- 0
+    nShown     <- Length(sig)
+    nExtra     <- nShown
+    nMissing   <- 0
+    if(vesselId > 0)
+    {
+        vessel     <- GetVessel(vesselId, vessels)
+        vesselName <- vessel.name
+        baseSig    <- vessel.sig
+        nMatches   <- CountMatches(sig, baseSig)
+        nExtra     <- nShown - nMatches
+        nMissing   <- Length(baseSig) - nMatches
+    }
+
+    row <- [gSubNum, blockCfg.task_id, blockCfg.id, blockCfg.response_mode,
+            trialNum, vesselId, vesselName, resp, correct, outcomeLabel, points,
+            blockCfg.signal_mode, rt, "", absT,
+            SigToStr(baseSig), SigToStr(sig), nShown, nExtra, nMissing,
+            bearing, congruent, "", "", "", confidence]
+    FilePrint(dataFile, ConcatenateList(row, ","))
+}
+
+
+## ============================================================
+## REVERSAL
+## ============================================================
+
+## Score a trial against the current correct_vessel (which may have been swapped).
+## Supports probabilistic feedback: with probability p_flip_feedback, reported
+## feedback is flipped (correct shown as incorrect and vice versa), but the
+## *recorded* correct value is always the true one.
+## Returns [trueCorrect, reportedCorrect, points, outcomeLabel]
+define ScoreReversalTrial(vesselId, response, blockCfg)
+{
+    trueCorrect <- 0
+    if(response == blockCfg.correct_vessel) { trueCorrect <- 1 }
+
+    reportedCorrect <- trueCorrect
+    if(Random() < blockCfg.p_flip_feedback)
+    {
+        reportedCorrect <- 1 - trueCorrect
+    }
+
+    points       <- blockCfg.payoff_miss
+    outcomeLabel <- "miss"
+    if(trueCorrect == 1)
+    {
+        points       <- blockCfg.payoff_hit
+        outcomeLabel <- "hit"
+    }
+
+    return([trueCorrect, reportedCorrect, points, outcomeLabel])
+}
+
+
+## Find the vessel id that is NOT the current correct_vessel (the foil).
+define GetOtherVessel(correctVesselId, vessels)
+{
+    other <- correctVesselId
+    loop(v, vessels)
+    {
+        if(v.id != correctVesselId and other == correctVesselId)
+        {
+            other <- v.id
+        }
+    }
+    return(other)
+}
+
+
+## Run a reversal block. Trials continue until nTrials reached OR reversal_max
+## reversals occur (whichever comes first if reversal_max > 0).
+## blockCfg.correct_vessel is mutated on each reversal.
+## Returns total reversal count (for logging).
+define RunReversalBlock(blockCfg, vessels, noiseImgs, dispY, fbY, offscreenX, dataFile)
+{
+    nTrials      <- blockCfg.trials
+    criterion    <- blockCfg.reversal_criterion
+    maxReversals <- blockCfg.reversal_max
+    trueFeedback <- blockCfg.feedback
+    trialNum     <- 1
+    nConsec      <- 0
+    nReversals   <- 0
+    done         <- 0
+
+    ## Suppress RunTrial's built-in feedback; reversal block applies its own
+    blockCfg.feedback <- "none"
+
+    while(trialNum <= nTrials and done == 0)
+    {
+        trialResult  <- RunTrial(blockCfg, vessels, noiseImgs, dispY, fbY, offscreenX)
+
+        vesselId     <- Nth(trialResult, 1)
+        response     <- Nth(trialResult, 2)
+        rt           <- Nth(trialResult, 3)
+        absT         <- Nth(trialResult, 7)
+        sig          <- Nth(trialResult, 8)
+
+        scoreData      <- ScoreReversalTrial(vesselId, response, blockCfg)
+        trueCorrect    <- Nth(scoreData, 1)
+        reportCorrect  <- Nth(scoreData, 2)
+        points         <- Nth(scoreData, 3)
+        outcomeLabel   <- Nth(scoreData, 4)
+
+        ## Apply feedback using reported correctness and the original feedback mode
+        blockCfg.feedback <- trueFeedback
+        ApplyFeedback(reportCorrect, points, blockCfg, fbY)
+        Wait(blockCfg.isi)
+        blockCfg.feedback <- "none"
+
+        ## Track consecutive correct (using TRUE outcome, not reported)
+        if(trueCorrect == 1)
+        {
+            nConsec <- nConsec + 1
+        } else {
+            nConsec <- 0
+        }
+
+        ## Reversal: swap correct vessel when criterion reached
+        if(nConsec >= criterion)
+        {
+            nConsec <- 0
+            nReversals <- nReversals + 1
+            blockCfg.correct_vessel <- GetOtherVessel(blockCfg.correct_vessel, vessels)
+            if(maxReversals > 0 and nReversals >= maxReversals)
+            {
+                done <- 1
+            }
+        }
+
+        ## Log with reversal columns: reuse bearing/congruent slots for nConsec/nReversals
+        LogReversalTrial(dataFile, blockCfg, trialNum, vesselId, response, rt,
+                         trueCorrect, reportCorrect, points, outcomeLabel, absT, sig,
+                         nConsec, nReversals, vessels)
+
+        trialNum <- trialNum + 1
+    }
+
+    blockCfg.feedback <- trueFeedback
+    return(nReversals)
+}
+
+
+define LogReversalTrial(dataFile, blockCfg, trialNum, vesselId, response, rt,
+                        trueCorrect, reportCorrect, points, outcomeLabel, absT, sig,
+                        nConsec, nReversals, vessels)
+{
+    vessel     <- GetVessel(vesselId, vessels)
+    vesselName <- vessel.name
+    baseSig    <- vessel.sig
+    nMatches   <- CountMatches(sig, baseSig)
+    nShown     <- Length(sig)
+    nExtra     <- nShown - nMatches
+    nMissing   <- Length(baseSig) - nMatches
+
+    row <- [gSubNum, blockCfg.task_id, blockCfg.id, blockCfg.response_mode,
+            trialNum, vesselId, vesselName, response, trueCorrect, outcomeLabel, points,
+            blockCfg.signal_mode, rt, "", absT,
+            SigToStr(baseSig), SigToStr(sig), nShown, nExtra, nMissing, "", "",
+            reportCorrect, nConsec, nReversals, blockCfg.correct_vessel]
+    FilePrint(dataFile, ConcatenateList(row, ","))
+}
+
+
+## ============================================================
+## BANDIT TASK
+## ============================================================
+
+## Sample a payoff for a zone using its mean and sd (normal distribution).
+## Rounds to integer; no floor/ceiling — can go negative.
+define SampleZonePayoff(vessel)
+{
+    mean <- vessel.payoff_mean
+    sd   <- vessel.payoff_sd
+    pts  <- Round(mean + RandomNormal(0, sd))
+    if(vessel.loss_prob > 0)
+    {
+        if(Random() < vessel.loss_prob)
+        {
+            pts <- pts - vessel.loss_amount
+        }
+    }
+    return(pts)
+}
+
+
+## Render all zone contacts on the heading strip simultaneously.
+## Returns list of [contactImgList, clickZone, vesselId] per zone for hit-testing.
+define RenderBanditContacts(vessels, dispY)
+{
+    zoneObjs  <- []
+    zoneIds   <- []
+
+    loop(v, vessels)
+    {
+        bearing   <- Nth(v.sig, 1)
+        halfWidth <- Nth(v.sig, 2)
+        sig       <- [bearing, halfWidth]
+
+        contactType <- v.contact_type
+        imgs <- RenderHeading(sig, gZoom, dispY, contactType)
+
+        ## Click zone over this contact
+        bgNativeW      <- 2000
+        bgScreenLeft   <- Round(gVideoWidth / 2 - bgNativeW * gZoom / 2.0)
+        bearingX       <- Round(bearing / 360.0 * bgNativeW)
+        contactScreenX <- bgScreenLeft + Round(bearingX * gZoom)
+        headingBgH     <- Round(200 * gZoom)
+        czW <- Round(60 * gZoom)
+        if(czW < 40) { czW <- 40 }
+        czCol <- MakeColorRGB(0, 60, 0)
+        cz    <- Rectangle(contactScreenX, dispY, czW, headingBgH, czCol, 1)
+        AddObject(cz, gWin)
+        Hide(cz)
+
+        PushOnEnd(zoneObjs, cz)
+        PushOnEnd(zoneIds,  v.id)
+
+        ## Store imgs on vessel for later removal
+        v.banditImgs <- imgs
+    }
+
+    return([zoneObjs, zoneIds])
+}
+
+
+## Remove all contact images from all zones.
+define ClearBanditContacts(vessels)
+{
+    loop(v, vessels)
+    {
+        if(PropertyExists(v, "banditImgs"))
+        {
+            ClearDisplay(v.banditImgs)
+        }
+    }
+}
+
+
+## Run a single bandit trial.
+## All zone contacts shown on heading strip; participant clicks one.
+## Payoff sampled from that zone's distribution; shown as immediate feedback.
+## Returns [chosenId, points, rt, absT]
+define RunBanditTrial(blockCfg, vessels, dispY, fbY)
+{
+    ## Render all contacts
+    zoneData <- RenderBanditContacts(vessels, dispY)
+    zoneObjs <- First(zoneData)
+    zoneIds  <- Second(zoneData)
+    Draw()
+
+    absT <- GetTime()
+    t0   <- GetTime()
+    chosenId <- WaitForClickOnTarget(zoneObjs, zoneIds)
+    rt   <- GetTime() - t0
+
+    ## Remove click zones
+    loop(cz, zoneObjs) { RemoveObject(cz, gWin) }
+
+    ## Sample payoff from chosen zone
+    chosenVessel <- GetVessel(chosenId, vessels)
+    points       <- SampleZonePayoff(chosenVessel)
+
+    ## Show payoff immediately on heading strip (contacts still visible)
+    UpdateScoreHUD(points)
+    if(points >= 0)
+    {
+        ptStr <- "+" + points
+    } else {
+        ptStr <- "" + points
+    }
+    msg <- MakeLabel(ptStr, gFontFB)
+    AddObject(msg, gWin)
+    Move(msg, Round(gVideoWidth/2), fbY)
+    Draw()
+    Wait(600)
+    RemoveObject(msg, gWin)
+
+    ## Clear contacts, ISI
+    ClearBanditContacts(vessels)
+    Draw()
+    Wait(blockCfg.isi)
+
+    return([chosenId, points, rt, absT])
+}
+
+
+define LogBanditTrial(dataFile, blockCfg, trialNum, trialResult, vessels)
+{
+    chosenId <- Nth(trialResult, 1)
+    points   <- Nth(trialResult, 2)
+    rt       <- Nth(trialResult, 3)
+    absT     <- Nth(trialResult, 4)
+
+    vessel     <- GetVessel(chosenId, vessels)
+    vesselName <- vessel.name
+
+    row <- [gSubNum, blockCfg.task_id, blockCfg.id, blockCfg.response_mode,
+            trialNum, chosenId, vesselName, chosenId, "", "", points,
+            blockCfg.signal_mode, rt, "", absT,
+            "", "", "", "", "", "", "", "", "", "", ""]
+    FilePrint(dataFile, ConcatenateList(row, ","))
+}
+
+
+## ============================================================
+## SECRETARY / OPTIMAL STOPPING TASK
+## ============================================================
+
+## Shuffle a list using Fisher-Yates (PEBL has no built-in shuffle).
+define ShuffleList(lst)
+{
+    n   <- Length(lst)
+    out <- CopyList(lst)
+    i   <- n
+    while(i > 1)
+    {
+        j    <- Round(1 + Random() * (i - 1))
+        tmp  <- Nth(out, i)
+        SetElement(out, i, Nth(out, j))
+        SetElement(out, j, tmp)
+        i <- i - 1
+    }
+    return(out)
+}
+
+
+## Build NORTH, WAIT, SOUTH buttons for the urns/inference task.
+## Returns [eastBtn, eastLbl, waitBtn, waitLbl, westBtn, westLbl]
+define MakeUrnsButtons()
+{
+    eastCol  <- MakeColorRGB(0, 80, 160)
+    eastFont <- MakeFont(gPEBLBaseFont, 1, 28, MakeColor("white"), MakeColor("black"), 0)
+    eastBtn  <- Rectangle(gOffscreenX, 0, 200, 50, eastCol, 1)
+    eastLbl  <- MakeLabel("EAST", eastFont)
+    AddObject(eastBtn, gWin)
+    AddObject(eastLbl, gWin)
+    Move(eastLbl, gOffscreenX, 0)
+
+    waitCol   <- MakeColorRGB(60, 60, 60)
+    waitFont  <- MakeFont(gPEBLBaseFont, 1, 28, MakeColor("white"), MakeColor("black"), 0)
+    waitBtn   <- Rectangle(gOffscreenX, 0, 200, 50, waitCol, 1)
+    waitLbl   <- MakeLabel("WAIT", waitFont)
+    AddObject(waitBtn, gWin)
+    AddObject(waitLbl, gWin)
+    Move(waitLbl, gOffscreenX, 0)
+
+    westCol  <- MakeColorRGB(160, 60, 0)
+    westFont <- MakeFont(gPEBLBaseFont, 1, 28, MakeColor("white"), MakeColor("black"), 0)
+    westBtn  <- Rectangle(gOffscreenX, 0, 200, 50, westCol, 1)
+    westLbl  <- MakeLabel("WEST", westFont)
+    AddObject(westBtn, gWin)
+    AddObject(westLbl, gWin)
+    Move(westLbl, gOffscreenX, 0)
+
+    return([eastBtn, eastLbl, waitBtn, waitLbl, westBtn, westLbl])
+}
+
+
+## Run one urns/directional-inference trial.
+## Contacts appear one at a time as tick marks on the heading strip.
+## Participant clicks WAIT to draw another contact, or NORTH/SOUTH to decide.
+## Returns [trueUrn, response, correct, nDraws, rt_ms, absT, points, drawSeq]
+## Also writes one event row per draw and one summary row.
+define RunUrnsRound(blockCfg, btnObjs, dataFile, trialNum)
+{
+    eastBtn <- Nth(btnObjs, 1)
+    eastLbl <- Nth(btnObjs, 2)
+    waitBtn  <- Nth(btnObjs, 3)
+    waitLbl  <- Nth(btnObjs, 4)
+    westBtn <- Nth(btnObjs, 5)
+    westLbl <- Nth(btnObjs, 6)
+
+    btnY     <- Round(gVideoHeight * 0.88)
+    eastX   <- Round(gVideoWidth * 0.25)
+    waitX    <- Round(gVideoWidth * 0.50)
+    westX   <- Round(gVideoWidth * 0.75)
+
+    ## Position buttons
+    Move(eastBtn, eastX, btnY); Move(eastLbl, eastX, btnY)
+    Move(waitBtn,  waitX,  btnY); Move(waitLbl,  waitX,  btnY)
+    Move(westBtn, westX, btnY); Move(westLbl, westX, btnY)
+
+    ## Heading strip background already visible (moved by RunBlock)
+    bgNativeW    <- 2000
+    bgScreenLeft <- Round(gVideoWidth / 2 - bgNativeW * gZoom / 2.0)
+    headingBgH   <- Round(200 * gZoom)
+
+    ## Determine true urn: 1=north-majority, 2=south-majority
+    ## vessel 1 = North center bearing, vessel 2 = South center bearing
+    if(Random() < 0.5)
+    {
+        trueUrn <- 1
+    } else {
+        trueUrn <- 2
+    }
+
+    ## Draw probabilities: majority side rate vs 1-rate
+    eastRate <- blockCfg.urn_east_rate
+    westRate <- 1.0 - eastRate
+
+    ## East bearing cluster center ~90 deg (right side), West ~270 deg (left side)
+    eastCenter <- 90
+    westCenter <- 270
+
+    bearingSd <- blockCfg.urn_bearing_sd
+
+    tickMarks    <- []
+    curGlyphImgs <- []
+    curBearing   <- -1
+    drawSeq      <- ""
+    nDraws       <- 0
+    drawLimit    <- blockCfg.urn_draw_limit
+    drawCost     <- blockCfg.urn_draw_cost
+
+    response  <- ""
+    decided   <- 0
+    startT    <- GetTime()
+
+    Draw()
+
+    while(decided == 0)
+    {
+        ## At draw limit, hide WAIT so only East/West remain
+        if(nDraws >= drawLimit)
+        {
+            Move(waitBtn, gOffscreenX, btnY)
+            Move(waitLbl, gOffscreenX, btnY)
+            Draw()
+        }
+
+        clickTargets <- [eastBtn, waitBtn, westBtn]
+        clickVals    <- [1, 2, 3]
+        clicked <- WaitForClickOnTarget(clickTargets, clickVals)
+
+        if(clicked == 2 and nDraws < drawLimit)
+        {
+            ## Retire current glyph to a thin line
+            if(curBearing >= 0)
+            {
+                loop(gi, curGlyphImgs) { RemoveObject(gi, gWin) }
+                curGlyphImgs <- []
+                tickBearingX <- Round(curBearing / 360.0 * bgNativeW)
+                tickScreenX  <- bgScreenLeft + Round(tickBearingX * gZoom)
+                tickTopY     <- gHeadDispY - Round(headingBgH / 2)
+                tickCol      <- MakeColorRGB(60, 200, 60)
+                tick <- Line(tickScreenX, tickTopY, 0, headingBgH, tickCol)
+                AddObject(tick, gWin)
+                PushOnEnd(tickMarks, tick)
+            }
+
+            ## Draw one contact from urn
+            nDraws <- nDraws + 1
+
+            ## Sample side from urn
+            drawnSide <- 0
+            if(trueUrn == 1)
+            {
+                if(Random() < eastRate)
+                {
+                    drawnSide <- 1
+                } else {
+                    drawnSide <- 2
+                }
+            } else {
+                if(Random() < eastRate)
+                {
+                    drawnSide <- 2
+                } else {
+                    drawnSide <- 1
+                }
+            }
+
+            ## Sample jittered bearing
+            if(drawnSide == 1)
+            {
+                rawBearing <- eastCenter + Round(RandomNormal(0, bearingSd))
+            } else {
+                rawBearing <- westCenter + Round(RandomNormal(0, bearingSd))
+            }
+            ## Wrap bearing to 0-359
+            while(rawBearing < 0)   { rawBearing <- rawBearing + 360 }
+            while(rawBearing >= 360) { rawBearing <- rawBearing - 360 }
+
+            ## Render current contact as a full noisy heading glyph
+            curBearing   <- rawBearing
+            headSig      <- [rawBearing, 5]
+            curGlyphImgs <- RenderHeading(headSig, gZoom, gHeadDispY, "noisy")
+
+            ## Accumulate draw cost
+            if(drawCost != 0)
+            {
+                UpdateScoreHUD(drawCost)
+            }
+
+            ## Build draw sequence string: E or W
+            if(drawnSide == 1)
+            {
+                drawSeq <- drawSeq + "E"
+            } else {
+                drawSeq <- drawSeq + "W"
+            }
+
+            ## Log draw event
+            drawT <- GetTime() - startT
+            erow  <- [gSubNum, blockCfg.task_id, blockCfg.id, "urns",
+                      trialNum, "draw", nDraws, drawnSide, rawBearing, drawT, GetTime()]
+            FilePrint(dataFile, ConcatenateList(erow, ","))
+
+            Draw()
+
+        } else {
+            if(clicked == 1)
+            {
+                response <- "east"
+                decided  <- 1
+            }
+            if(clicked == 3)
+            {
+                response <- "west"
+                decided  <- 1
+            }
+        }
+    }
+
+    totalRt <- GetTime() - startT
+    absT    <- GetTime()
+
+    ## Score
+    correct <- 0
+    points  <- 0
+    if(response == "east" and trueUrn == 1) { correct <- 1 }
+    if(response == "west" and trueUrn == 2) { correct <- 1 }
+    if(correct == 1)
+    {
+        points <- blockCfg.urn_correct_pts
+    } else {
+        points <- blockCfg.urn_wrong_pts
+    }
+    UpdateScoreHUD(points)
+
+    ## Log decision event
+    drow <- [gSubNum, blockCfg.task_id, blockCfg.id, "urns",
+             trialNum, "decide", nDraws, response, trueUrn, correct, points, totalRt, GetTime()]
+    FilePrint(dataFile, ConcatenateList(drow, ","))
+
+    ## Feedback
+    if(blockCfg.feedback == "accuracy" or blockCfg.feedback == "payoff")
+    {
+        if(correct == 1)
+        {
+            fbStr  <- "Correct! +" + points + " pts"
+            fbFont <- MakeFont(gPEBLBaseFont, 1, 28, MakeColorRGB(60, 220, 60), MakeColor("black"), 0)
+        } else {
+            fbStr  <- "Wrong! " + points + " pts"
+            fbFont <- MakeFont(gPEBLBaseFont, 1, 28, MakeColorRGB(220, 60, 60), MakeColor("black"), 0)
+        }
+        fbLbl <- MakeLabel(fbStr, fbFont)
+        AddObject(fbLbl, gWin)
+        Move(fbLbl, Round(gVideoWidth/2), Round(gVideoHeight * 0.78))
+        Draw()
+        Wait(blockCfg.isi)
+        RemoveObject(fbLbl, gWin)
+    } else {
+        Wait(blockCfg.isi)
+    }
+
+    ## Clean up current glyph and all tick marks
+    loop(gi, curGlyphImgs) { RemoveObject(gi, gWin) }
+    loop(t, tickMarks) { RemoveObject(t, gWin) }
+
+    ## Park buttons offscreen
+    Move(eastBtn, gOffscreenX, btnY); Move(eastLbl, gOffscreenX, btnY)
+    Move(waitBtn,  gOffscreenX, btnY); Move(waitLbl,  gOffscreenX, btnY)
+    Move(westBtn, gOffscreenX, btnY); Move(westLbl, gOffscreenX, btnY)
+
+    Draw()
+
+    return([trueUrn, response, correct, nDraws, totalRt, absT, points, drawSeq])
+}
+
+
+## Log summary row for one urns trial.
+define LogUrnsTrial(dataFile, blockCfg, trialNum, result)
+{
+    trueUrn  <- Nth(result, 1)
+    response <- Nth(result, 2)
+    correct  <- Nth(result, 3)
+    nDraws   <- Nth(result, 4)
+    rt       <- Nth(result, 5)
+    absT     <- Nth(result, 6)
+    points   <- Nth(result, 7)
+    drawSeq  <- Nth(result, 8)
+
+    row <- [gSubNum, blockCfg.task_id, blockCfg.id, "urns",
+            trialNum, trueUrn, response, correct, nDraws, rt, absT, points, drawSeq]
+    FilePrint(dataFile, ConcatenateList(row, ","))
+}
+
+
+## Run one horizon game using the heading strip display.
+## Each game: East and West regions have different hidden payoff means (randomly assigned).
+## Forced phase: automation gathers contacts per pre-assigned sequence; payoff drawn and scored.
+## Free phase: participant chooses East or West; payoff drawn from chosen region and scored.
+## Forced and free draws are mechanically identical — agency is the only difference.
+## Returns list of free-trial results; writes one data row per draw (forced and free).
+define RunHorizonGame(blockCfg, btnObjs, dataFile, hgameNum)
+{
+    eastBtn <- Nth(btnObjs, 1)
+    eastLbl <- Nth(btnObjs, 2)
+    waitBtn <- Nth(btnObjs, 3)
+    waitLbl <- Nth(btnObjs, 4)
+    westBtn <- Nth(btnObjs, 5)
+    westLbl <- Nth(btnObjs, 6)
+
+    btnY  <- Round(gVideoHeight * 0.88)
+    eastX <- Round(gVideoWidth * 0.25)
+    waitX <- Round(gVideoWidth * 0.50)
+    westX <- Round(gVideoWidth * 0.75)
+
+    bgNativeW    <- 2000
+    bgScreenLeft <- Round(gVideoWidth / 2 - bgNativeW * gZoom / 2.0)
+    headingBgH   <- Round(200 * gZoom)
+    bearingSd    <- blockCfg.urn_bearing_sd
+    fbY          <- gHeadDispY - Round(headingBgH / 2) - 20
+    eastCenter   <- 90
+    westCenter   <- 270
+
+    freeTri  <- blockCfg.horizon_free_trials
+    infoType <- blockCfg.horizon_info
+
+    ## Per-game payoff means: randomly assign high/low to East/West
+    hiMean <- blockCfg.horizon_hi_mean
+    loMean <- blockCfg.horizon_lo_mean
+    paySd  <- blockCfg.horizon_pay_sd
+    highSide <- 1
+    if(Random() < 0.5) { highSide <- 2 }
+    if(highSide == 1)
+    {
+        eastMean <- hiMean
+        westMean <- loMean
+    } else {
+        eastMean <- loMean
+        westMean <- hiMean
+    }
+
+    ## Build forced sequence: [2,2] equal or [1,3]/[3,1] unequal, shuffled
+    nF1 <- 2
+    nF2 <- 2
+    if(infoType == "unequal")
+    {
+        if(Random() < 0.5) { nF1 <- 1; nF2 <- 3 }
+        else               { nF1 <- 3; nF2 <- 1 }
+    }
+    nForced   <- nF1 + nF2
+    forcedSeq <- []
+    fi <- 1
+    while(fi <= nF1) { PushOnEnd(forcedSeq, 1); fi <- fi + 1 }
+    fi <- 1
+    while(fi <= nF2) { PushOnEnd(forcedSeq, 2); fi <- fi + 1 }
+    forcedSeq <- Shuffle(forcedSeq)
+
+    tickMarks    <- []
+    tickLabels   <- []
+    curGlyphImgs <- []
+    curBearing   <- -1
+    curPts       <- 0
+
+    tickTopY  <- gHeadDispY - Round(headingBgH / 2)
+    tickCol   <- MakeColorRGB(60, 200, 60)
+    tickFont  <- MakeFont(gPEBLBaseFont, 0, 16, MakeColor("white"), MakeColor("black"), 0)
+
+    ## --- FORCED PHASE: GATHER only ---
+    Move(eastBtn, gOffscreenX, btnY); Move(eastLbl, gOffscreenX, btnY)
+    Move(westBtn, gOffscreenX, btnY); Move(westLbl, gOffscreenX, btnY)
+    Move(waitBtn, waitX, btnY);       Move(waitLbl, waitX, btnY)
+    Draw()
+
+    fi <- 1
+    while(fi <= nForced)
+    {
+        WaitForClickOnTarget([waitBtn], [1])
+
+        ## Retire current glyph to tick + payoff label
+        if(curBearing >= 0)
+        {
+            loop(gi, curGlyphImgs) { RemoveObject(gi, gWin) }
+            curGlyphImgs <- []
+            tickBearingX <- Round(curBearing / 360.0 * bgNativeW)
+            tickScreenX  <- bgScreenLeft + Round(tickBearingX * gZoom)
+            tick <- Line(tickScreenX, tickTopY, 0, headingBgH, tickCol)
+            AddObject(tick, gWin)
+            PushOnEnd(tickMarks, tick)
+            ptsStr <- "+" + curPts
+            if(curPts < 0) { ptsStr <- "" + curPts }
+            ptLbl <- MakeLabel(ptsStr, tickFont)
+            AddObject(ptLbl, gWin)
+            Move(ptLbl, tickScreenX, tickTopY - 12)
+            PushOnEnd(tickLabels, ptLbl)
+        }
+
+        drawSide <- Nth(forcedSeq, fi)
+        if(drawSide == 1)
+        {
+            rawBearing <- eastCenter + Round(RandomNormal(0, bearingSd))
+            pts        <- Round(RandomNormal(eastMean, paySd))
+        } else {
+            rawBearing <- westCenter + Round(RandomNormal(0, bearingSd))
+            pts        <- Round(RandomNormal(westMean, paySd))
+        }
+        while(rawBearing < 0)    { rawBearing <- rawBearing + 360 }
+        while(rawBearing >= 360) { rawBearing <- rawBearing - 360 }
+
+        curBearing   <- rawBearing
+        curPts       <- pts
+        headSig      <- [rawBearing, 5]
+        curGlyphImgs <- RenderHeading(headSig, gZoom, gHeadDispY, "noisy")
+        UpdateScoreHUD(pts)
+
+        fbFont <- MakeFont(gPEBLBaseFont, 1, 28, MakeColorRGB(200, 200, 60), MakeColor("black"), 0)
+        fbStr  <- "+" + pts + " pts"
+        if(pts < 0) { fbStr <- pts + " pts" }
+        fbLbl <- MakeLabel(fbStr, fbFont)
+        AddObject(fbLbl, gWin)
+        Move(fbLbl, Round(gVideoWidth/2), fbY)
+        Draw()
+        Wait(blockCfg.isi)
+        RemoveObject(fbLbl, gWin)
+
+        sideStr <- "east"
+        if(drawSide == 2) { sideStr <- "west" }
+        erow <- [gSubNum, blockCfg.task_id, blockCfg.id, "horizon",
+                 hgameNum, "forced", fi, infoType, freeTri, nF1, nF2,
+                 highSide, sideStr, sideStr, pts, "", GetTime()]
+        FilePrint(dataFile, ConcatenateList(erow, ","))
+
+        fi <- fi + 1
+    }
+
+    ## Retire last forced glyph to tick + label
+    if(curBearing >= 0)
+    {
+        loop(gi, curGlyphImgs) { RemoveObject(gi, gWin) }
+        curGlyphImgs <- []
+        tickBearingX <- Round(curBearing / 360.0 * bgNativeW)
+        tickScreenX  <- bgScreenLeft + Round(tickBearingX * gZoom)
+        tick <- Line(tickScreenX, tickTopY, 0, headingBgH, tickCol)
+        AddObject(tick, gWin)
+        PushOnEnd(tickMarks, tick)
+        ptsStr <- "+" + curPts
+        if(curPts < 0) { ptsStr <- "" + curPts }
+        ptLbl <- MakeLabel(ptsStr, tickFont)
+        AddObject(ptLbl, gWin)
+        Move(ptLbl, tickScreenX, tickTopY - 12)
+        PushOnEnd(tickLabels, ptLbl)
+        curBearing <- -1
+        Draw()
+    }
+
+    ## --- FREE PHASE: EAST/WEST, no GATHER ---
+    Move(waitBtn, gOffscreenX, btnY); Move(waitLbl, gOffscreenX, btnY)
+    Move(eastBtn, eastX, btnY);       Move(eastLbl, eastX, btnY)
+    Move(westBtn, westX, btnY);       Move(westLbl, westX, btnY)
+    Draw()
+
+    freeResults <- []
+    ti <- 1
+    while(ti <= freeTri)
+    {
+        startT <- GetTime()
+        chosenSide <- WaitForClickOnTarget([eastBtn, westBtn], [1, 2])
+        rt   <- GetTime() - startT
+        absT <- GetTime()
+
+        if(chosenSide == 1)
+        {
+            rawBearing <- eastCenter + Round(RandomNormal(0, bearingSd))
+            pts        <- Round(RandomNormal(eastMean, paySd))
+        } else {
+            rawBearing <- westCenter + Round(RandomNormal(0, bearingSd))
+            pts        <- Round(RandomNormal(westMean, paySd))
+        }
+        while(rawBearing < 0)    { rawBearing <- rawBearing + 360 }
+        while(rawBearing >= 360) { rawBearing <- rawBearing - 360 }
+
+        curBearing   <- rawBearing
+        curPts       <- pts
+        headSig      <- [rawBearing, 5]
+        curGlyphImgs <- RenderHeading(headSig, gZoom, gHeadDispY, "noisy")
+        UpdateScoreHUD(pts)
+
+        correct <- 0
+        if(chosenSide == highSide) { correct <- 1 }
+
+        fbFont <- MakeFont(gPEBLBaseFont, 1, 28, MakeColorRGB(200, 200, 60), MakeColor("black"), 0)
+        fbStr  <- "+" + pts + " pts"
+        if(pts < 0) { fbStr <- pts + " pts" }
+        fbLbl <- MakeLabel(fbStr, fbFont)
+        AddObject(fbLbl, gWin)
+        Move(fbLbl, Round(gVideoWidth/2), fbY)
+        Draw()
+        Wait(blockCfg.isi)
+        RemoveObject(fbLbl, gWin)
+
+        ## Retire glyph to tick + payoff label
+        loop(gi, curGlyphImgs) { RemoveObject(gi, gWin) }
+        curGlyphImgs <- []
+        tickBearingX <- Round(rawBearing / 360.0 * bgNativeW)
+        tickScreenX  <- bgScreenLeft + Round(tickBearingX * gZoom)
+        tick <- Line(tickScreenX, tickTopY, 0, headingBgH, tickCol)
+        AddObject(tick, gWin)
+        PushOnEnd(tickMarks, tick)
+        ptsStr <- "+" + pts
+        if(pts < 0) { ptsStr <- "" + pts }
+        ptLbl <- MakeLabel(ptsStr, tickFont)
+        AddObject(ptLbl, gWin)
+        Move(ptLbl, tickScreenX, tickTopY - 12)
+        PushOnEnd(tickLabels, ptLbl)
+        curBearing <- -1
+        Draw()
+
+        chosenStr <- "east"
+        if(chosenSide == 2) { chosenStr <- "west" }
+        highStr <- "east"
+        if(highSide == 2) { highStr <- "west" }
+        erow <- [gSubNum, blockCfg.task_id, blockCfg.id, "horizon",
+                 hgameNum, "free", ti, infoType, freeTri, nF1, nF2,
+                 highStr, chosenStr, chosenStr, pts, rt, absT]
+        FilePrint(dataFile, ConcatenateList(erow, ","))
+
+        PushOnEnd(freeResults, [chosenSide, highSide, correct, pts, rt])
+        ti <- ti + 1
+    }
+
+    ## Teardown
+    Move(eastBtn, gOffscreenX, btnY); Move(eastLbl, gOffscreenX, btnY)
+    Move(westBtn, gOffscreenX, btnY); Move(westLbl, gOffscreenX, btnY)
+    loop(gi, curGlyphImgs) { RemoveObject(gi, gWin) }
+    loop(t,  tickMarks)    { RemoveObject(t,  gWin) }
+    loop(pl, tickLabels)   { RemoveObject(pl, gWin) }
+    Draw()
+
+    return(freeResults)
+}
+
+
+## Build EAST, WAIT, WEST buttons for horizon task.
+## Returns [eastBtn, eastLbl, waitBtn, waitLbl, westBtn, westLbl]
+define MakeHorizonButtons()
+{
+    eastCol  <- MakeColorRGB(0, 80, 160)
+    eastFont <- MakeFont(gPEBLBaseFont, 1, 28, MakeColor("white"), MakeColor("black"), 0)
+    eastBtn  <- Rectangle(gOffscreenX, 0, 200, 50, eastCol, 1)
+    eastLbl  <- MakeLabel("EAST", eastFont)
+    AddObject(eastBtn, gWin); AddObject(eastLbl, gWin)
+    Move(eastLbl, gOffscreenX, 0)
+
+    waitCol  <- MakeColorRGB(60, 60, 60)
+    waitFont <- MakeFont(gPEBLBaseFont, 1, 28, MakeColor("white"), MakeColor("black"), 0)
+    waitBtn  <- Rectangle(gOffscreenX, 0, 200, 50, waitCol, 1)
+    waitLbl  <- MakeLabel("GATHER", waitFont)
+    AddObject(waitBtn, gWin); AddObject(waitLbl, gWin)
+    Move(waitLbl, gOffscreenX, 0)
+
+    westCol  <- MakeColorRGB(160, 60, 0)
+    westFont <- MakeFont(gPEBLBaseFont, 1, 28, MakeColor("white"), MakeColor("black"), 0)
+    westBtn  <- Rectangle(gOffscreenX, 0, 200, 50, westCol, 1)
+    westLbl  <- MakeLabel("WEST", westFont)
+    AddObject(westBtn, gWin); AddObject(westLbl, gWin)
+    Move(westLbl, gOffscreenX, 0)
+
+    return([eastBtn, eastLbl, waitBtn, waitLbl, westBtn, westLbl])
+}
+
+
+## Build SELECT and PASS buttons, park them offscreen initially.
+## Returns [selectBtn, passBtn] — caller moves them onscreen.
+define MakeSecretaryButtons()
+{
+    selCol  <- MakeColorRGB(0, 100, 0)
+    selFont <- MakeFont(gPEBLBaseFont, 1, 28, MakeColor("white"), MakeColor("black"), 0)
+    selBtn  <- Rectangle(gOffscreenX, 0, 200, 50, selCol, 1)
+    selLbl  <- MakeLabel("SELECT", selFont)
+    AddObject(selBtn, gWin)
+    AddObject(selLbl, gWin)
+    Move(selLbl, gOffscreenX, 0)
+
+    deferCol  <- MakeColorRGB(60, 60, 0)
+    deferFont <- MakeFont(gPEBLBaseFont, 1, 28, MakeColor("white"), MakeColor("black"), 0)
+    deferBtn  <- Rectangle(gOffscreenX, 0, 200, 50, deferCol, 1)
+    deferLbl  <- MakeLabel("Choose None", deferFont)
+    AddObject(deferBtn, gWin)
+    AddObject(deferLbl, gWin)
+    Move(deferLbl, gOffscreenX, 0)
+
+    return([selBtn, selLbl, deferBtn, deferLbl])
+}
+
+
+## Run one secretary/optimal-stopping trial.
+## All N contacts shown simultaneously on the bearing strip as click zones.
+## Participant clicks any contact to investigate it (narrowband revealed).
+## Can freely switch between contacts by clicking another.
+## Terminal choices:
+##   SELECT (shown when a contact is under investigation) — commit to it, earn quality
+##   CHOOSE NONE  (shown always if allow_defer==1) — choose none, earn defer_cost (usually 0 or negative)
+## Returns [selectedId, selectedQuality, nInvestigated, nContacts, totalRt, absT, deferred, hasTarget, points]
+## Also writes one log row per investigate click and one for the terminal SELECT/DEFER.
+define RunSecretaryRound(blockCfg, contacts, noiseImgs, dispY, fbY, offscreenX, btnObjs, vessels, dataFile, trialNum)
+{
+    selBtn   <- Nth(btnObjs, 1)
+    selLbl   <- Nth(btnObjs, 2)
+    deferBtn <- Nth(btnObjs, 3)
+    deferLbl <- Nth(btnObjs, 4)
+
+    nContacts    <- Length(contacts)
+    btnY         <- fbY + 60
+    selBtnX      <- Round(gVideoWidth / 2) - 130
+    deferBtnX    <- Round(gVideoWidth / 2) + 130
+    allowDefer   <- blockCfg.allow_defer
+    deferCost    <- blockCfg.defer_cost
+
+    selectedId      <- 0
+    selectedQuality <- 0
+    nInvestigated   <- 0
+    absT            <- GetTime()
+    totalRt         <- 0
+    deferred        <- 0
+    investigateT    <- 0    ## time when current investigation started
+    prevContactId   <- 0    ## vessel id of previously investigated contact
+    prevContactNum  <- 0    ## contact index of previously investigated contact
+
+    ## Reference thumbnail: show existing Alpha thumbImg below SELECT button.
+    targetV    <- Nth(vessels, 1)
+    tbgW       <- Round(gVideoWidth * 0.125)
+    tzoomX     <- tbgW / 240.0
+    tbgH       <- Round(120 * tzoomX)
+    refThumbY  <- btnY + Round(tbgH / 2) + 30
+    refLblY    <- refThumbY + Round(tbgH / 2) + 20
+    Move(targetV.thumbImg, selBtnX, refThumbY)
+    Move(targetV.lbl,      selBtnX, refLblY)
+    Show(targetV.thumbImg)
+    Show(targetV.lbl)
+
+    ## Render all contacts on heading strip; build invisible click zones
+    czObjs <- []
+    czImgs <- []
+    idx <- 1
+    loop(c, contacts)
+    {
+        headSig <- [c.bearing, 8]
+        imgs    <- RenderHeading(headSig, gZoom, gHeadDispY, c.contact_type)
+
+        bgNativeW      <- 2000
+        bgScreenLeft   <- Round(gVideoWidth / 2 - bgNativeW * gZoom / 2.0)
+        bearingX       <- Round(c.bearing / 360.0 * bgNativeW)
+        contactScreenX <- bgScreenLeft + Round(bearingX * gZoom)
+        headingBgH     <- Round(200 * gZoom)
+        czW <- Round(60 * gZoom)
+        if(czW < 40) { czW <- 40 }
+        czCol <- MakeColorRGB(0, 60, 0)
+        cz    <- Rectangle(contactScreenX, gHeadDispY, czW, headingBgH, czCol, 1)
+        AddObject(cz, gWin)
+        Hide(cz)
+
+        PushOnEnd(czObjs, cz)
+        PushOnEnd(czImgs, imgs)
+        idx <- idx + 1
+    }
+
+    ## DEFER button shown immediately if allowed
+    if(allowDefer == 1)
+    {
+        Move(deferBtn, deferBtnX, btnY)
+        Move(deferLbl, deferBtnX, btnY)
+    }
+
+    currentNbImgs   <- []
+    currentNoiseImg <- Nth(noiseImgs, 1)
+    investigating   <- 0
+
+    ## Highlight box shown on heading strip around the active contact
+    headingBgH  <- Round(200 * gZoom)
+    hlW         <- Round(70 * gZoom)
+    if(hlW < 50) { hlW <- 50 }
+    hlCol       <- MakeColorRGB(200, 200, 0)
+    hlBox       <- Rectangle(gOffscreenX, gHeadDispY, hlW, headingBgH + 4, hlCol, 0)
+    AddObject(hlBox, gWin)
+
+
+    Draw()
+
+    done <- 0
+    while(done == 0)
+    {
+        ## Build target list: all contacts + SELECT if investigating + DEFER if allowed
+        targObjs <- CopyList(czObjs)
+        targIds  <- []
+        i <- 1
+        while(i <= nContacts)
+        {
+            PushOnEnd(targIds, i)
+            i <- i + 1
+        }
+
+        if(investigating > 0)
+        {
+            Move(selBtn, selBtnX, btnY)
+            Move(selLbl, selBtnX, btnY)
+            PushOnEnd(targObjs, selBtn)
+            PushOnEnd(targIds,  -1)
+        } else {
+            Move(selBtn,  gOffscreenX, btnY)
+            Move(selLbl,  gOffscreenX, btnY)
+        }
+
+        if(allowDefer == 1)
+        {
+            PushOnEnd(targObjs, deferBtn)
+            PushOnEnd(targIds,  -2)
+        }
+
+        Draw()
+
+        t0   <- GetTime()
+        resp <- WaitForClickOnTarget(targObjs, targIds)
+        totalRt <- totalRt + (GetTime() - t0)
+
+        if(resp == -1)
+        {
+            ## SELECT current contact — log final dwell then terminal event
+            contact         <- Nth(contacts, investigating)
+            selectedId      <- contact.id
+            selectedQuality <- contact.quality
+            dwellMs <- GetTime() - investigateT
+            erow <- [gSubNum, blockCfg.task_id, blockCfg.id, blockCfg.response_mode,
+                     trialNum, "investigate", prevContactNum, prevContactId,
+                     nInvestigated, dwellMs, GetTime()]
+            FilePrint(dataFile, ConcatenateList(erow, ","))
+            erow <- [gSubNum, blockCfg.task_id, blockCfg.id, blockCfg.response_mode,
+                     trialNum, "select", prevContactNum, selectedId,
+                     nInvestigated, totalRt, GetTime()]
+            FilePrint(dataFile, ConcatenateList(erow, ","))
+            done            <- 1
+        } else {
+            if(resp == -2)
+            {
+                ## DEFER — log terminal event (no dwell to close if not investigating)
+                if(investigating > 0)
+                {
+                    dwellMs <- GetTime() - investigateT
+                    erow <- [gSubNum, blockCfg.task_id, blockCfg.id, blockCfg.response_mode,
+                             trialNum, "investigate", prevContactNum, prevContactId,
+                             nInvestigated, dwellMs, GetTime()]
+                    FilePrint(dataFile, ConcatenateList(erow, ","))
+                }
+                erow <- [gSubNum, blockCfg.task_id, blockCfg.id, blockCfg.response_mode,
+                         trialNum, "defer", 0, 0, nInvestigated, totalRt, GetTime()]
+                FilePrint(dataFile, ConcatenateList(erow, ","))
+                deferred <- 1
+                done     <- 1
+            } else {
+                ## Investigate a contact — log dwell on previous, clear display
+                if(investigating > 0)
+                {
+                    dwellMs <- GetTime() - investigateT
+                    erow <- [gSubNum, blockCfg.task_id, blockCfg.id, blockCfg.response_mode,
+                             trialNum, "investigate", prevContactNum, prevContactId,
+                             nInvestigated, dwellMs, GetTime()]
+                    FilePrint(dataFile, ConcatenateList(erow, ","))
+                    Move(currentNoiseImg, offscreenX, dispY)
+                    ClearDisplay(currentNbImgs)
+                    Move(gBg, offscreenX, dispY)
+                }
+                investigateT   <- GetTime()
+                investigating  <- resp
+                nInvestigated  <- nInvestigated + 1
+                contact        <- Nth(contacts, investigating)
+                prevContactId  <- contact.id
+                prevContactNum <- investigating
+
+                ## Move highlight box and label to this contact's bearing position
+                bgNativeW      <- 2000
+                bgScreenLeft   <- Round(gVideoWidth / 2 - bgNativeW * gZoom / 2.0)
+                bearingX       <- Round(contact.bearing / 360.0 * bgNativeW)
+                contactScreenX <- bgScreenLeft + Round(bearingX * gZoom)
+                Move(hlBox, contactScreenX, gHeadDispY)
+                noiseChoice     <- Round(Random() * (Length(noiseImgs) - 1)) + 1
+                currentNoiseImg <- Nth(noiseImgs, noiseChoice)
+                Move(currentNoiseImg, Round(gVideoWidth/2), dispY)
+                currentNbImgs <- RenderNarrowband(contact.sig, gZoom, dispY)
+                Move(gBg, Round(gVideoWidth/2), dispY)
+                Draw()
+            }
+        }
+    }
+
+    ## Clean up
+    loop(imgs, czImgs) { ClearDisplay(imgs) }
+    loop(cz,   czObjs) { RemoveObject(cz, gWin) }
+    Move(currentNoiseImg, offscreenX, dispY)
+    ClearDisplay(currentNbImgs)
+    Move(gBg, offscreenX, dispY)
+    Move(selBtn,   gOffscreenX, btnY)
+    Move(selLbl,   gOffscreenX, btnY)
+    Move(deferBtn, gOffscreenX, btnY)
+    Move(deferLbl, gOffscreenX, btnY)
+    RemoveObject(hlBox, gWin)
+    Hide(targetV.thumbImg)
+    Hide(targetV.lbl)
+
+    ## Was a target (vessel id==1) present this round?
+    hasTarget  <- 0
+    loop(c, contacts)
+    {
+        if(c.id == targetV.id) { hasTarget <- 1 }
+    }
+
+    ## Outcome
+    points   <- 0
+    ptStr    <- ""
+    missCost <- blockCfg.miss_cost
+    if(deferred == 1)
+    {
+        if(hasTarget == 1)
+        {
+            ## Miss: deferred when target was present
+            points <- missCost
+            if(points == 0)
+            {
+                ptStr <- "Deferred — target was present (0 pts)"
+            } else {
+                ptStr <- "Deferred — target was present (" + points + " pts)"
+            }
+        } else {
+            ## Correct rejection: no target, safe to defer
+            points <- deferCost
+            ptStr  <- "Deferred — no target (correct)"
+        }
+        UpdateScoreHUD(points)
+    } else {
+        if(selectedId > 0)
+        {
+            points <- selectedQuality
+            UpdateScoreHUD(points)
+            if(points >= 0)
+            {
+                ptStr <- "Selected: +" + points
+            } else {
+                ptStr <- "Selected: " + points
+            }
+        } else {
+            points <- 0
+            ptStr  <- "No selection — 0 pts"
+        }
+    }
+
+    msg <- MakeLabel(ptStr, gFontFB)
+    AddObject(msg, gWin)
+    Move(msg, Round(gVideoWidth/2), fbY)
+    Draw()
+    Wait(1000)
+    RemoveObject(msg, gWin)
+    Draw()
+    Wait(blockCfg.isi)
+
+    return([selectedId, selectedQuality, nInvestigated, nContacts, totalRt, absT, deferred, hasTarget, points])
+}
+
+
+## Pick a bearing that is at least minSep degrees from all bearings in usedList.
+define PickSeparatedBearing(usedList, minSep)
+{
+    bearing <- 0
+    found   <- 0
+    tries   <- 0
+    while(found == 0 and tries < 200)
+    {
+        tries   <- tries + 1
+        bearing <- Round(Random() * 359)
+        tooClose <- 0
+        loop(b, usedList)
+        {
+            diff <- Abs(bearing - b)
+            if(diff > 180) { diff <- 360 - diff }
+            if(diff < minSep) { tooClose <- 1 }
+        }
+        if(tooClose == 0) { found <- 1 }
+    }
+    return(bearing)
+}
+
+
+## Build contacts for one secretary round.
+## Target rate: P(target_rate) chance of exactly one high-value vessel (id==1);
+## remaining slots filled with vessel 2 (low-value).
+## Bearings spaced at least secretary_min_sep degrees apart.
+define BuildSecretaryContacts(blockCfg, vessels)
+{
+    nMax       <- blockCfg.secretary_n_contacts
+    targetRate <- blockCfg.secretary_target_rate
+    minSep     <- blockCfg.secretary_min_sep
+
+    v1 <- Nth(vessels, 1)
+    v2 <- Nth(vessels, 2)
+
+    ## Number of contacts: uniform 1..nMax (Floor avoids rounding bias at endpoints)
+    nContacts <- 1 + Floor(Random() * nMax)
+
+    ## 0 or 1 target per round
+    hasTarget <- 0
+    if(Random() < targetRate) { hasTarget <- 1 }
+
+    ## Build vessel id list: one v1 if hasTarget, rest v2
+    idList <- []
+    if(hasTarget == 1) { PushOnEnd(idList, v1.id) }
+    i <- Length(idList) + 1
+    while(i <= nContacts)
+    {
+        PushOnEnd(idList, v2.id)
+        i <- i + 1
+    }
+    idList <- ShuffleList(idList)
+
+    ## Assign separated bearings and build contact objects
+    usedBearings <- []
+    contacts     <- []
+    contactNum   <- 1
+    loop(vid, idList)
+    {
+        v       <- GetVessel(vid, vessels)
+        bearing <- PickSeparatedBearing(usedBearings, minSep)
+        PushOnEnd(usedBearings, bearing)
+
+        c              <- MakeCustomObject("contact")
+        c.id           <- v.id
+        c.name         <- "Contact " + contactNum
+        c.contact_type <- "solid"
+        contactNum     <- contactNum + 1
+        c.quality      <- Round(v.payoff_mean + RandomNormal(0, v.payoff_sd))
+        c.bearing      <- bearing
+        ## Target: probabilistic display of alpha bands + jitter
+        ## Foil: p_close_foil chance of a close shifted foil; otherwise random
+        if(vid == v1.id)
+        {
+            c.sig <- MakeTargetSig(v.sig, blockCfg.p_show, blockCfg.sig_jitter, blockCfg.p_leak)
+        } else {
+            if(Random() < blockCfg.p_close_foil)
+            {
+                c.sig <- MakeCloseFoilSig(v1.sig, blockCfg.close_foil_min, blockCfg.close_foil_max)
+            } else {
+                c.sig <- MakeFoilSig(v1.sig, 5, blockCfg.p_alpha_leak, blockCfg.sig_jitter)
+            }
+        }
+        PushOnEnd(contacts, c)
+    }
+
+    return(contacts)
+}
+
+
+define LogSecretaryTrial(dataFile, blockCfg, trialNum, trialResult)
+{
+    selectedId    <- Nth(trialResult, 1)
+    quality       <- Nth(trialResult, 2)
+    nInvestigated <- Nth(trialResult, 3)
+    nContacts     <- Nth(trialResult, 4)
+    rt            <- Nth(trialResult, 5)
+    absT          <- Nth(trialResult, 6)
+    deferred      <- Nth(trialResult, 7)
+    hasTarget     <- Nth(trialResult, 8)
+    points        <- Nth(trialResult, 9)
+
+    row <- [gSubNum, blockCfg.task_id, blockCfg.id, blockCfg.response_mode,
+            trialNum, selectedId, "", selectedId, deferred, "", points,
+            blockCfg.signal_mode, rt, "", absT,
+            nContacts, nInvestigated, hasTarget, "", "", "", "", "", "", ""]
+    FilePrint(dataFile, ConcatenateList(row, ","))
+}
+
+
+## ============================================================
+## BLOCK RUNNER
+## ============================================================
+
+define RunBlock(blockCfg, vessels, noiseImgs, dispY, fbY, offscreenX, dataFile)
+{
+    if(blockCfg.seed != 0) { SeedRNG(blockCfg.seed) }
+
+    if(blockCfg.feedback == "payoff")
+    {
+        gCumulScore <- blockCfg.starting_score
+        gScoreHUD.text <- "Score: " + gCumulScore
+        Draw()
+    }
+
+    if(blockCfg.response_mode == "bandit" or
+       blockCfg.response_mode == "secretary" or
+       blockCfg.response_mode == "urns" or
+       blockCfg.response_mode == "horizon")
+    {
+        loop(v, vessels) { Hide(v.thumbImg); Hide(v.lbl) }
+        Draw()
+    } else {
+        if(blockCfg.show_thumbnails == 0)
+        {
+            SetupNoThumbDisplay(vessels)
+        } else {
+            loop(v, vessels) { Show(v.thumbImg); Show(v.lbl) }
+            Draw()
+        }
+    }
+
+    ## Secretary/urns/horizon: heading bg always visible during block
+    if(blockCfg.response_mode == "secretary" or
+       blockCfg.response_mode == "urns" or
+       blockCfg.response_mode == "horizon")
+    {
+        Move(gHeadingBg, Round(gVideoWidth/2), gHeadDispY)
+        Draw()
+    }
+
+    if(blockCfg.response_mode == "reversal")
+    {
+        revRule <- "Click the matching vessel. Mapping will reverse — watch for feedback."
+        if(blockCfg.rule_text != "") { revRule <- blockCfg.rule_text }
+        SetTaskRule(revRule)
+        RunReversalBlock(blockCfg, vessels, noiseImgs, dispY, fbY, offscreenX, dataFile)
+        ClearTaskRule()
+    } else {
+        nTrials     <- blockCfg.trials
+        trialNum    <- 1
+        gngLabels   <- []
+        simonLabels <- []
+
+        if(blockCfg.response_mode == "gonogo")
+        {
+            gngLabels <- SetupGonogDisplay(vessels, blockCfg)
+        }
+        if(blockCfg.response_mode == "simon")
+        {
+            RepositionSimonThumbs(vessels)
+            simonLabels <- SetupSimonDisplay(vessels, blockCfg)
+        }
+
+        ## Set per-trial task rule HUD (JSON rule_text overrides auto-generated default)
+        autoRule <- ""
+        if(blockCfg.response_mode == "gonogo")
+        {
+            autoRule <- "GO target: click it. Withhold for other contacts."
+        }
+        if(blockCfg.response_mode == "simon")
+        {
+            autoRule <- BuildSimonRuleText(vessels)
+        }
+        if(blockCfg.response_mode == "choice")
+        {
+            autoRule <- "Click the matching vessel thumbnail."
+        }
+        if(blockCfg.response_mode == "cued")
+        {
+            autoRule <- "Step 1: click the contact side. Step 2: identify the vessel."
+        }
+        if(blockCfg.response_mode == "bandit")
+        {
+            autoRule <- "Choose a sector to monitor each round."
+        }
+        if(blockCfg.response_mode == "secretary")
+        {
+            autoRule <- "Observe contacts in order. STOP when you see the best — no going back."
+        }
+        if(blockCfg.response_mode == "urns")
+        {
+            autoRule <- "DRAW samples, or STOP and choose EAST or WEST."
+        }
+        if(blockCfg.response_mode == "horizon")
+        {
+            autoRule <- "GATHER: auto-sample. Then choose EAST or WEST."
+        }
+        ruleToShow <- autoRule
+        if(blockCfg.rule_text != "") { ruleToShow <- blockCfg.rule_text }
+        if(ruleToShow != "") { SetTaskRule(ruleToShow) }
+
+        while(trialNum <= nTrials)
+        {
+            trialResult <- []
+            if(blockCfg.response_mode == "gonogo")
+            {
+                trialResult <- RunGonogTrial(blockCfg, vessels, noiseImgs, dispY, fbY, offscreenX)
+            } else {
+                if(blockCfg.response_mode == "simon")
+                {
+                    trialResult <- RunSimonTrial(blockCfg, vessels, noiseImgs, dispY, fbY, offscreenX)
+                } else {
+                    if(blockCfg.response_mode == "cued")
+                    {
+                        trialResult <- RunCuedTrial(blockCfg, vessels, noiseImgs, gHeadDispY, gNbDispY, fbY, offscreenX)
+                        LogCuedTrial(dataFile, blockCfg, trialNum, trialResult, vessels)
+                        trialResult <- []
+                    } else {
+                        if(blockCfg.response_mode == "bandit")
+                        {
+                            trialResult <- RunBanditTrial(blockCfg, vessels, dispY, fbY)
+                            LogBanditTrial(dataFile, blockCfg, trialNum, trialResult, vessels)
+                            trialResult <- []
+                        } else {
+                            if(blockCfg.response_mode == "secretary")
+                            {
+                                contacts    <- BuildSecretaryContacts(blockCfg, vessels)
+                                trialResult <- RunSecretaryRound(blockCfg, contacts, noiseImgs, dispY, fbY, offscreenX, gSecretaryBtns, vessels, dataFile, trialNum)
+                                LogSecretaryTrial(dataFile, blockCfg, trialNum, trialResult)
+                                trialResult <- []
+                            } else {
+                                if(blockCfg.response_mode == "urns")
+                                {
+                                    trialResult <- RunUrnsRound(blockCfg, gUrnsBtns, dataFile, trialNum)
+                                    LogUrnsTrial(dataFile, blockCfg, trialNum, trialResult)
+                                    trialResult <- []
+                                } else {
+                                    if(blockCfg.response_mode == "horizon")
+                                    {
+                                        RunHorizonGame(blockCfg, gHorizonBtns, dataFile, trialNum)
+                                        trialResult <- []
+                                    } else {
+                                        trialResult <- RunTrial(blockCfg, vessels, noiseImgs, dispY, fbY, offscreenX)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if(Length(trialResult) > 0)
+            {
+                LogTrial(dataFile, blockCfg, trialNum, trialResult, vessels)
+            }
+            trialNum <- trialNum + 1
+        }
+
+        ClearTaskRule()
+
+        if(blockCfg.response_mode == "gonogo")
+        {
+            TeardownGonogDisplay(vessels, gngLabels)
+        }
+        if(blockCfg.response_mode == "simon")
+        {
+            TeardownSimonDisplay(simonLabels)
+            ## Restore thumbnails to original screen positions
+            loop(v, vessels)
+            {
+                Move(v.thumbImg, v.thumbX, v.thumbY)
+                tbgW  <- Round(gVideoWidth * 0.125)
+                tzoomX <- tbgW / 240.0
+                tbgH  <- Round(60 * tzoomX)
+                Move(v.lbl, v.thumbX, v.thumbY + Round(tbgH / 2) + 28)
+            }
+        }
+    }
+
+    if(blockCfg.response_mode == "bandit" or
+       blockCfg.response_mode == "secretary" or
+       blockCfg.response_mode == "urns" or
+       blockCfg.response_mode == "horizon")
+    {
+        loop(v, vessels) { Show(v.thumbImg); Show(v.lbl) }
+        if(blockCfg.response_mode == "secretary" or
+           blockCfg.response_mode == "urns" or
+           blockCfg.response_mode == "horizon")
+        {
+            Move(gHeadingBg, gOffscreenX, gHeadDispY)
+        }
+        Draw()
+    } else {
+        if(blockCfg.show_thumbnails == 0)
+        {
+            TeardownNoThumbDisplay(vessels)
+        }
+    }
+}
+
+
+## ============================================================
+## INSTRUCTIONS
+## ============================================================
+
+define ShowBlockInstructions(blockCfg, clickLbl)
+{
+    instrText <- blockCfg.instructions
+
+    tbW <- Round(gVideoWidth * 0.65)
+    tbH <- Round(gVideoHeight * 0.55)
+    tbX <- Round((gVideoWidth - tbW) / 2)
+    tbY <- Round(gVideoHeight * 0.08)
+
+    tb <- EasyTextBox(instrText, tbX, tbY, gWin, 16, tbW, tbH)
+    SetProperty(tb, "FORMATTED", 1)
+
+    AddObject(clickLbl, gWin)
+    Move(clickLbl, Round(gVideoWidth/2), Round(tbY + tbH + 30))
+
+    Draw()
+    WaitForClickOnTarget([clickLbl], [1])
+
+    RemoveObject(tb, gWin)
+    RemoveObject(clickLbl, gWin)
+    Draw()
+}
+
+
+## Set persistent task-rule reminder at top of screen for current block.
+define SetTaskRule(ruleText)
+{
+    gRuleHUD.text <- ruleText
+    Draw()
+}
+
+
+## Clear task-rule reminder between blocks.
+define ClearTaskRule()
+{
+    gRuleHUD.text <- ""
+    Draw()
+}
+
+
+## Build a task-rule string for response_mode == "simon" from vessel list.
+define BuildSimonRuleText(vessels)
+{
+    leftName  <- ""
+    rightName <- ""
+    loop(v, vessels)
+    {
+        if(v.response_side == "left")  { leftName  <- v.name }
+        if(v.response_side == "right") { rightName <- v.name }
+    }
+    return(leftName + " -> LEFT   |   " + rightName + " -> RIGHT")
+}
+
+
+## ============================================================
+## CONFIG LOADING
+## ============================================================
+
+## Build a default signal_params object so blocks can omit fields.
+define DefaultSignalParams()
+{
+    p <- MakeCustomObject("sigparams")
+    p.jitter_sd   <- 20
+    p.n_noise_min <- 1
+    p.n_noise_max <- 3
+    p.n_mimic     <- 2
+    p.p_show      <- 0.75
+    return(p)
+}
+
+
+## Build a default payoff object.
+define DefaultPayoff()
+{
+    p <- MakeCustomObject("payoff")
+    p.hit  <- 10
+    p.miss <- -5
+    p.fa   <- -3
+    p.cr   <- 0
+    return(p)
+}
+
+
+## Merge JSON signal_params into a params object, using defaults for missing fields.
+define MergeSignalParams(jsonParams)
+{
+    p <- DefaultSignalParams()
+    if(IsCustomObject(jsonParams))
+    {
+        if(PropertyExists(jsonParams, "jitter_sd"))   { p.jitter_sd   <- jsonParams.jitter_sd }
+        if(PropertyExists(jsonParams, "n_noise_min")) { p.n_noise_min <- jsonParams.n_noise_min }
+        if(PropertyExists(jsonParams, "n_noise_max")) { p.n_noise_max <- jsonParams.n_noise_max }
+        if(PropertyExists(jsonParams, "n_mimic"))     { p.n_mimic     <- jsonParams.n_mimic }
+        if(PropertyExists(jsonParams, "p_show"))      { p.p_show      <- jsonParams.p_show }
+    }
+    return(p)
+}
+
+
+## Build a block config object from a parsed JSON block entry.
+## taskId passed in from top-level config.
+define BuildBlockCfg(jsonBlock, taskId)
+{
+    b <- MakeCustomObject("blockcfg")
+    b.task_id <- taskId
+    b.id      <- jsonBlock.id
+
+    if(PropertyExists(jsonBlock, "label"))
+    {
+        b.label <- jsonBlock.label
+    } else {
+        b.label <- jsonBlock.id
+    }
+
+    if(PropertyExists(jsonBlock, "instructions"))
+    {
+        b.instructions <- jsonBlock.instructions
+    } else {
+        b.instructions <- "<h3>Round: " + jsonBlock.id + "</h3>"
+    }
+
+    b.rule_text <- ""
+    if(PropertyExists(jsonBlock, "rule_text"))
+    {
+        b.rule_text <- jsonBlock.rule_text
+    }
+
+    if(PropertyExists(jsonBlock, "trials"))
+    {
+        b.trials <- jsonBlock.trials
+    } else {
+        b.trials <- 10
+    }
+
+    if(PropertyExists(jsonBlock, "base_rate"))
+    {
+        b.base_rate <- jsonBlock.base_rate
+    } else {
+        b.base_rate <- 0.5
+    }
+
+    if(PropertyExists(jsonBlock, "signal_mode"))
+    {
+        b.signal_mode <- jsonBlock.signal_mode
+    } else {
+        b.signal_mode <- "clean"
+    }
+
+    if(PropertyExists(jsonBlock, "signal_params"))
+    {
+        b.signal_params <- MergeSignalParams(jsonBlock.signal_params)
+    } else {
+        b.signal_params <- DefaultSignalParams()
+    }
+
+    if(PropertyExists(jsonBlock, "response_mode"))
+    {
+        b.response_mode <- jsonBlock.response_mode
+    } else {
+        b.response_mode <- "choice"
+    }
+
+    if(PropertyExists(jsonBlock, "display"))
+    {
+        b.display <- jsonBlock.display
+    } else {
+        b.display <- gTaskDisplay
+    }
+
+    if(PropertyExists(jsonBlock, "isi"))
+    {
+        b.isi <- jsonBlock.isi
+    } else {
+        b.isi <- 500
+    }
+
+    ## Go/no-go parameters
+    if(b.response_mode == "gonogo")
+    {
+        if(PropertyExists(jsonBlock, "gonogo_go_vessel"))
+        {
+            b.gonogo_go_vessel <- jsonBlock.gonogo_go_vessel
+        } else {
+            b.gonogo_go_vessel <- 1
+        }
+        if(PropertyExists(jsonBlock, "gonogo_response_window"))
+        {
+            b.gonogo_response_window <- jsonBlock.gonogo_response_window
+        } else {
+            b.gonogo_response_window <- 1000
+        }
+    } else {
+        b.gonogo_go_vessel       <- 1
+        b.gonogo_response_window <- 1000
+    }
+
+    if(PropertyExists(jsonBlock, "feedback"))
+    {
+        b.feedback <- jsonBlock.feedback
+    } else {
+        b.feedback <- "accuracy"
+    }
+
+    if(PropertyExists(jsonBlock, "payoff_hit"))
+    {
+        b.payoff_hit  <- jsonBlock.payoff_hit
+        b.payoff_miss <- jsonBlock.payoff_miss
+    } else {
+        b.payoff_hit  <- 10
+        b.payoff_miss <- -5
+    }
+    if(PropertyExists(jsonBlock, "payoff_fa"))
+    {
+        b.payoff_fa <- jsonBlock.payoff_fa
+    } else {
+        b.payoff_fa <- -5
+    }
+    if(PropertyExists(jsonBlock, "payoff_cr"))
+    {
+        b.payoff_cr <- jsonBlock.payoff_cr
+    } else {
+        b.payoff_cr <- 0
+    }
+
+    ## Secretary / optimal stopping parameters
+    if(PropertyExists(jsonBlock, "secretary_n_contacts"))
+    {
+        b.secretary_n_contacts <- jsonBlock.secretary_n_contacts
+    } else {
+        b.secretary_n_contacts <- 5
+    }
+    if(PropertyExists(jsonBlock, "secretary_target_rate"))
+    {
+        b.secretary_target_rate <- jsonBlock.secretary_target_rate
+    } else {
+        b.secretary_target_rate <- 0.33
+    }
+    if(PropertyExists(jsonBlock, "secretary_min_sep"))
+    {
+        b.secretary_min_sep <- jsonBlock.secretary_min_sep
+    } else {
+        b.secretary_min_sep <- 45
+    }
+
+    if(PropertyExists(jsonBlock, "allow_defer"))
+    {
+        b.allow_defer <- jsonBlock.allow_defer
+    } else {
+        b.allow_defer <- 0
+    }
+    if(PropertyExists(jsonBlock, "defer_cost"))
+    {
+        b.defer_cost <- jsonBlock.defer_cost
+    } else {
+        b.defer_cost <- 0
+    }
+    if(PropertyExists(jsonBlock, "miss_cost"))
+    {
+        b.miss_cost <- jsonBlock.miss_cost
+    } else {
+        b.miss_cost <- 0
+    }
+
+    ## Cued task parameters
+    if(PropertyExists(jsonBlock, "cue_validity"))
+    {
+        b.cue_validity <- jsonBlock.cue_validity
+    } else {
+        b.cue_validity <- 0.8
+    }
+    if(PropertyExists(jsonBlock, "cue_duration"))
+    {
+        b.cue_duration <- jsonBlock.cue_duration
+    } else {
+        b.cue_duration <- 500
+    }
+    if(PropertyExists(jsonBlock, "cue_soa"))
+    {
+        b.cue_soa <- jsonBlock.cue_soa
+    } else {
+        b.cue_soa <- 500
+    }
+
+    ## Thumbnail visibility (default on; set false for probrev/blind tasks)
+    if(PropertyExists(jsonBlock, "show_thumbnails"))
+    {
+        b.show_thumbnails <- jsonBlock.show_thumbnails
+    } else {
+        b.show_thumbnails <- 1
+    }
+
+    ## Reversal parameters
+    if(PropertyExists(jsonBlock, "reversal_criterion"))
+    {
+        b.reversal_criterion <- jsonBlock.reversal_criterion
+    } else {
+        b.reversal_criterion <- 10
+    }
+    if(PropertyExists(jsonBlock, "reversal_max"))
+    {
+        b.reversal_max <- jsonBlock.reversal_max
+    } else {
+        b.reversal_max <- 0
+    }
+    if(PropertyExists(jsonBlock, "p_flip_feedback"))
+    {
+        b.p_flip_feedback <- jsonBlock.p_flip_feedback
+    } else {
+        b.p_flip_feedback <- 0.0
+    }
+    ## correct_vessel: which vessel id is currently correct (mutable during reversal)
+    if(PropertyExists(jsonBlock, "correct_vessel"))
+    {
+        b.correct_vessel <- jsonBlock.correct_vessel
+    } else {
+        b.correct_vessel <- 1
+    }
+
+    ## Secretary signal noise params
+    b.p_show        <- 0.9
+    b.p_leak        <- 0.0
+    b.p_alpha_leak  <- 0.0
+    b.sig_jitter    <- 30
+    b.p_close_foil  <- 0.5
+    b.close_foil_min <- 60
+    b.close_foil_max <- 150
+    if(PropertyExists(jsonBlock, "p_show"))        { b.p_show        <- jsonBlock.p_show }
+    if(PropertyExists(jsonBlock, "p_leak"))         { b.p_leak        <- jsonBlock.p_leak }
+    if(PropertyExists(jsonBlock, "p_alpha_leak"))   { b.p_alpha_leak  <- jsonBlock.p_alpha_leak }
+    if(PropertyExists(jsonBlock, "sig_jitter"))     { b.sig_jitter    <- jsonBlock.sig_jitter }
+    if(PropertyExists(jsonBlock, "p_close_foil"))   { b.p_close_foil  <- jsonBlock.p_close_foil }
+    if(PropertyExists(jsonBlock, "close_foil_min")) { b.close_foil_min <- jsonBlock.close_foil_min }
+    if(PropertyExists(jsonBlock, "close_foil_max")) { b.close_foil_max <- jsonBlock.close_foil_max }
+
+    ## Confidence rating: if 1, CollectConfidence() fires after response (choice mode only for now)
+    b.collect_confidence <- 0
+    if(PropertyExists(jsonBlock, "collect_confidence")) { b.collect_confidence <- jsonBlock.collect_confidence }
+
+    ## RNG seed: if set, SeedRNG is called at block start for reproducible stimulus sequences
+    b.seed <- 0
+    if(PropertyExists(jsonBlock, "seed")) { b.seed <- jsonBlock.seed }
+
+    b.starting_score <- 0
+    if(PropertyExists(jsonBlock, "starting_score")) { b.starting_score <- jsonBlock.starting_score }
+
+    ## Urns / directional inference parameters
+    b.urn_east_rate  <- 0.7
+    b.urn_bearing_sd  <- 20
+    b.urn_draw_limit  <- 12
+    b.urn_draw_cost   <- 0
+    b.urn_correct_pts <- 100
+    b.urn_wrong_pts   <- -100
+    if(PropertyExists(jsonBlock, "urn_east_rate"))  { b.urn_east_rate  <- jsonBlock.urn_east_rate }
+    if(PropertyExists(jsonBlock, "urn_bearing_sd"))  { b.urn_bearing_sd  <- jsonBlock.urn_bearing_sd }
+    if(PropertyExists(jsonBlock, "urn_draw_limit"))  { b.urn_draw_limit  <- jsonBlock.urn_draw_limit }
+    if(PropertyExists(jsonBlock, "urn_draw_cost"))   { b.urn_draw_cost   <- jsonBlock.urn_draw_cost }
+    if(PropertyExists(jsonBlock, "urn_correct_pts")) { b.urn_correct_pts <- jsonBlock.urn_correct_pts }
+    if(PropertyExists(jsonBlock, "urn_wrong_pts"))   { b.urn_wrong_pts   <- jsonBlock.urn_wrong_pts }
+
+    ## Horizon / explore-exploit parameters
+    b.horizon_free_trials  <- 1
+    b.horizon_info         <- "equal"
+    b.horizon_forced_isi   <- 600
+    b.horizon_hi_mean      <- 60
+    b.horizon_lo_mean      <- 40
+    b.horizon_pay_sd       <- 20
+    if(PropertyExists(jsonBlock, "horizon_free_trials"))  { b.horizon_free_trials  <- jsonBlock.horizon_free_trials }
+    if(PropertyExists(jsonBlock, "horizon_info"))         { b.horizon_info         <- jsonBlock.horizon_info }
+    if(PropertyExists(jsonBlock, "horizon_forced_isi"))   { b.horizon_forced_isi   <- jsonBlock.horizon_forced_isi }
+    if(PropertyExists(jsonBlock, "horizon_hi_mean"))      { b.horizon_hi_mean      <- jsonBlock.horizon_hi_mean }
+    if(PropertyExists(jsonBlock, "horizon_lo_mean"))      { b.horizon_lo_mean      <- jsonBlock.horizon_lo_mean }
+    if(PropertyExists(jsonBlock, "horizon_pay_sd"))       { b.horizon_pay_sd       <- jsonBlock.horizon_pay_sd }
+
+    return(b)
+}
+
+
+## Build a thumbnail widget using rectangles drawn onto a canvas.
+## Three row bands match the main waterfall geometry. Each frequency
+## in sig gets a narrow stripe rectangle in its correct row band.
+define MakeThumbnail(sig, x, y, win, zoom)
+{
+    ## Build canvas at actual display pixel size — avoid zoom on canvas (breaks at zoom<1)
+    tw <- Round(240 * zoom)
+    th <- Round(120 * zoom)
+    if(tw < 1) { tw <- 1 }
+    if(th < 1) { th <- 1 }
+
+    ## Row band geometry: native narrowband coords scaled to thumb pixel size
+    scaleY <- th / 1000.0
+    scaleX <- tw / 2000.0
+
+    r1cy <- Round((60  + 283/2) * scaleY)
+    r2cy <- Round((381 + 283/2) * scaleY)
+    r3cy <- Round((702 + 283/2) * scaleY)
+    rowH <- Round(283 * scaleY)
+
+    bgDark    <- MakeColorRGB(0,  20,  0)
+    rowBg     <- MakeColorRGB(0,  50,  0)
+    stripeCol <- MakeColorRGB(60, 230, 80)
+    borderCol <- MakeColorRGB(0, 100, 20)
+
+    stripeW <- Round(5 * zoom)
+    if(stripeW < 1) { stripeW <- 1 }
+
+    canvas <- MakeCanvas(tw, th, bgDark)
+    AddObject(canvas, win)
+    Move(canvas, x, y)
+
+    ## Three row background bands
+    rb1 <- Rectangle(tw/2, r1cy, tw, rowH, rowBg, 1)
+    rb2 <- Rectangle(tw/2, r2cy, tw, rowH, rowBg, 1)
+    rb3 <- Rectangle(tw/2, r3cy, tw, rowH, rowBg, 1)
+    AddObject(rb1, canvas)
+    AddObject(rb2, canvas)
+    AddObject(rb3, canvas)
+    Draw(rb1)
+    Draw(rb2)
+    Draw(rb3)
+
+    ## Border
+    bord <- Rectangle(tw/2, th/2, tw, th, borderCol, 0)
+    AddObject(bord, canvas)
+    Draw(bord)
+
+    ## Stripe rectangles — one per frequency, position mapped into canvas pixel coords
+    rects <- []
+
+    loop(freq, sig)
+    {
+        freqLo <- 0
+        freqHi <- 1
+        rcy    <- r1cy
+
+        if(freq >= 0   and freq < 250)  { freqLo <- 0;   freqHi <- 250;  rcy <- r1cy }
+        if(freq >= 250 and freq < 750)  { freqLo <- 250; freqHi <- 750;  rcy <- r2cy }
+        if(freq >= 750 and freq <= 1750){ freqLo <- 750; freqHi <- 1750; rcy <- r3cy }
+
+        nativeFrac <- (freq - freqLo) / (freqHi - freqLo)
+        px <- Round((50 + nativeFrac * 1950) * scaleX)
+
+        r <- Rectangle(px, rcy, stripeW, rowH, stripeCol, 1)
+        AddObject(r, canvas)
+        Draw(r)
+        PushOnEnd(rects, r)
+    }
+
+    Draw(canvas)
+
+    obj           <- MakeCustomObject("thumbnail")
+    obj.canv      <- canvas
+    obj.rb1       <- rb1
+    obj.rb2       <- rb2
+    obj.rb3       <- rb3
+    obj.bord      <- bord
+    obj.rects     <- rects
+    obj.bgDark    <- bgDark
+    obj.rowBg     <- rowBg
+    obj.stripeCol <- stripeCol
+    obj.borderCol <- borderCol
+    obj.x      <- x
+    obj.y      <- y
+    obj.width  <- tw
+    obj.height <- th
+    obj.Move   <- "MoveThumbnail"
+    obj.Hide   <- "HideThumbnail"
+    obj.Show   <- "ShowThumbnail"
+    obj.Add    <- "AddThumbnail"
+    obj.Remove <- "RemoveThumbnail"
+    return(obj)
+}
+
+define MoveThumbnail(obj, x, y)
+{
+    obj.x <- x
+    obj.y <- y
+    Move(obj.canv, x, y)
+}
+
+define HideThumbnail(obj)
+{
+    Hide(obj.canv)
+}
+
+define ShowThumbnail(obj)
+{
+    Show(obj.canv)
+}
+
+define AddThumbnail(obj, win)
+{
+    AddObject(obj.canv, win)
+}
+
+define RemoveThumbnail(obj, win)
+{
+    RemoveObject(obj.canv, win)
+}
+
+
+## Hide thumbnails and show go/no-go role labels instead.
+## Returns a list of the created label objects so they can be removed later.
+define SetupGonogDisplay(vessels, blockCfg)
+{
+    goVessel <- blockCfg.gonogo_go_vessel
+
+    fontGo   <- MakeFont(gPEBLBaseFont, 1, 22, MakeColorRGB(60, 220, 60),  MakeColor("black"), 1)
+    fontNogo <- MakeFont(gPEBLBaseFont, 1, 22, MakeColorRGB(220, 60, 60),  MakeColor("black"), 1)
+    fontName <- MakeFont(gPEBLBaseFont, 0, 18, MakeColor("white"), MakeColor("black"), 1)
+
+    gngLabels <- []
+
+    thumbNativeH <- 120
+    if(blockCfg.display == "heading") { thumbNativeH <- 60 }
+    tbgW   <- Round(gVideoWidth * 0.125)
+    tzoomX <- tbgW / 240.0
+    tbgH   <- Round(thumbNativeH * tzoomX)
+
+    loop(v, vessels)
+    {
+        Show(v.thumbImg)
+        Show(v.lbl)
+        tx <- v.thumb.x
+        ty <- v.thumb.y
+
+        ## Role label placed below the existing name label
+        lblY <- ty + Round(tbgH / 2) + 28 + 26
+
+        roleL <- MakeLabel("WITHHOLD", fontNogo)
+        if(v.id == goVessel)
+        {
+            roleL <- MakeLabel("RESPOND", fontGo)
+        }
+        AddObject(roleL, gWin)
+        Move(roleL, tx, lblY)
+
+        PushOnEnd(gngLabels, roleL)
+    }
+
+    Draw()
+    return(gngLabels)
+}
+
+
+## Remove gonogo role labels and restore thumbnails.
+define TeardownGonogDisplay(vessels, gngLabels)
+{
+    loop(v, vessels)
+    {
+        Show(v.thumbImg)
+        Show(v.lbl)
+    }
+    loop(lbl, gngLabels)
+    {
+        RemoveObject(lbl, gWin)
+    }
+    Draw()
+}
+
+
+## Build vessel objects from parsed JSON vessel list entries.
+## display: "narrowband" or "heading" — controls which thumbnail type is built.
+define BuildVessels(jsonVessels, display)
+{
+    vessels     <- []
+    gThumbnails <- []   ## global — prevents GC of canvas sub-objects
+
+    ## Thumbnail dimensions: narrowband=240x120, heading=240x60
+    thumbNativeW <- 240
+    thumbNativeH <- 120
+    if(display == "heading") { thumbNativeH <- 60 }
+
+    tbgW   <- Round(gVideoWidth * 0.125)
+    tzoomX <- tbgW / thumbNativeW
+    tbgH   <- Round(thumbNativeH * tzoomX)
+    ## Keep thumbnail + label at least 80px above bottom edge
+    thumbY <- Round(gVideoHeight * 0.82)
+    safeThumbY <- gVideoHeight - Round(tbgH / 2) - 80
+    if(thumbY > safeThumbY) { thumbY <- safeThumbY }
+    nV     <- Length(jsonVessels)
+
+    idx <- 1
+    loop(jv, jsonVessels)
+    {
+        thumbX <- Round(gVideoWidth * (idx / (nV + 1.0)))
+        sig    <- jv.sig
+
+        v      <- MakeCustomObject("vessel")
+        v.id   <- jv.id
+        v.name <- jv.name
+        v.sig  <- sig
+
+        ## Optional Simon / heading fields
+        v.response_side  <- "left"
+        if(PropertyExists(jv, "response_side"))  { v.response_side  <- jv.response_side }
+        v.bearings <- sig
+        if(PropertyExists(jv, "bearings"))       { v.bearings       <- jv.bearings }
+        v.contact_type <- "solid"
+        if(PropertyExists(jv, "contact_type"))   { v.contact_type   <- jv.contact_type }
+        v.payoff_mean <- 0
+        if(PropertyExists(jv, "payoff_mean"))    { v.payoff_mean    <- jv.payoff_mean }
+        v.payoff_sd <- 0
+        if(PropertyExists(jv, "payoff_sd"))      { v.payoff_sd      <- jv.payoff_sd }
+        v.loss_prob <- 0.0
+        if(PropertyExists(jv, "loss_prob"))      { v.loss_prob      <- jv.loss_prob }
+        v.loss_amount <- 0
+        if(PropertyExists(jv, "loss_amount"))    { v.loss_amount    <- jv.loss_amount }
+
+        ## Build thumbnail widget matching display type; zoom set inside constructor
+        thumb <- MakeThumbnail(sig, thumbX, thumbY, gWin, tzoomX)
+        if(display == "heading")
+        {
+            thumb <- MakeHeadingThumbnail(sig, thumbX, thumbY, gWin, v.contact_type, tzoomX)
+        }
+        v.thumb    <- thumb
+        v.thumbImg <- thumb.canv
+        PushOnEnd(gThumbnails, thumb)
+
+        ## Label under thumbnail
+        lbl  <- MakeLabel(jv.name, gFontLbl)
+        AddObject(lbl, gWin)
+        lblY <- thumbY + Round(tbgH / 2) + 28
+        Move(lbl, thumbX, lblY)
+        v.lbl <- lbl
+
+        ## Plain labeled button for no-thumbnail mode — parked offscreen until needed
+        btnCol  <- MakeColorRGB(0, 60, 0)
+        btn     <- Rectangle(gOffscreenX, thumbY, tbgW, tbgH, btnCol, 1)
+        AddObject(btn, gWin)
+        btnFont <- MakeFont(gPEBLBaseFont, 0, 28, MakeColor("white"), MakeColor("black"), 0)
+        btnLbl  <- MakeLabel(jv.name, btnFont)
+        AddObject(btnLbl, gWin)
+        Move(btnLbl, gOffscreenX, thumbY)
+        v.btn    <- btn
+        v.btnLbl <- btnLbl
+        v.btnX   <- thumbX
+        v.btnY   <- thumbY
+        v.btnCol <- btnCol
+        v.thumbX <- thumbX
+        v.thumbY <- thumbY
+
+        PushOnEnd(vessels, v)
+        idx <- idx + 1
+    }
+
+    return(vessels)
+}
+
+
+## Multi-column config file picker.
+## labels: display names (filenames). values: full paths returned on click.
+## Lays items in columns of maxRows each, small font, compact spacing.
+define PickConfigFile(labels, values, win)
+{
+    ShowCursor(1)
+
+    fontTitle <- MakeFont(gPEBLBaseFont, 1, 22, MakeColor("white"),  MakeColor("black"), 1)
+    fontItem  <- MakeFont(gPEBLBaseFont, 0, 18, MakeColor("white"),  MakeColor("black"), 1)
+    boxCol    <- MakeColorRGB(0, 80, 0)
+    boxHiCol  <- MakeColorRGB(60, 180, 60)
+
+    title <- MakeLabel("Select a task configuration — click to load:", fontTitle)
+    AddObject(title, win)
+    Move(title, Round(gVideoWidth / 2), 30)
+
+    maxRows  <- 8
+    nItems   <- Length(labels)
+    nCols    <- Ceiling(nItems / maxRows)
+    colW     <- Round(gVideoWidth / (nCols + 1))
+    rowH     <- 40
+    startY   <- 80
+
+    squares  <- []
+    allObjs  <- [title]
+    idx      <- 1
+
+    loop(lbl, labels)
+    {
+        col <- Ceiling(idx / maxRows)
+        row <- idx - (col - 1) * maxRows
+        cx  <- col * colW
+        cy  <- startY + (row - 1) * rowH + Round(rowH / 2)
+
+        sq  <- Square(cx - Round(colW / 2) + 15, cy, rowH - 8, boxCol, 1)
+        AddObject(sq, win)
+
+        lab <- MakeLabel(lbl, fontItem)
+        AddObject(lab, win)
+        Move(lab, cx - Round(colW / 2) + 15 + rowH + 8 + Round(lab.width / 2), cy)
+
+        PushOnEnd(squares, sq)
+        PushOnEnd(allObjs, sq)
+        PushOnEnd(allObjs, lab)
+        idx <- idx + 1
+    }
+
+    Draw()
+    chosen <- WaitForClickOnTarget(squares, values)
+
+    loop(o, allObjs) { RemoveObject(o, win) }
+    Draw()
+    return(chosen)
+}
+
+
+##this initializes any UI elements that are set up at the beginning and potentially used repeatedly.  
+##it should be dependent on test mode, but for now we move all of them here.
+
+##taskdisplay may be 'heading' 'cued', 'narrowband' etc.
+#It generates many global objects for display and stimuli.
+
+define InitializeUI(taskdisplay,cfg)
+{
+    ## --- Display constants ---
+    gZoom          <- gVideoWidth / 2000.0 * 0.5
+    zoom <- gZoom
+    gStripeStretch <- 4.0
+    ## --- Layout (display-specific gDispY/gFbY set after config loaded) ---
+    gOffscreenX <- -3000
+
+    ## --- Fonts ---
+    gFontLarge <- MakeFont(gPEBLBaseFont, 0, 28, MakeColor("white"),  MakeColor("black"), 1)
+    gFontSmall <- MakeFont(gPEBLBaseFont, 0, 24, MakeColor("white"),  MakeColor("black"), 1)
+    gFontFB    <- MakeFont(gPEBLBaseFont, 0, 32, MakeColor("yellow"), MakeColor("black"), 1)
+    gFontLbl   <- MakeFont(gPEBLBaseFont, 0, 20, MakeColor("white"),  MakeColor("black"), 1)
+
+    ## --- Score HUD (persistent payoff display, top-right corner) ---
+    gCumulScore <- 0
+    gScoreHUD   <- MakeLabel("Score: 0", gFontLbl)
+    AddObject(gScoreHUD, gWin)
+    Move(gScoreHUD, Round(gVideoWidth * 0.88), 40)
+
+    ## --- Task rule HUD (top-center, updated per block, cleared between blocks) ---
+    gRuleFont <- MakeFont(gPEBLBaseFont, 1, 20, MakeColorRGB(220, 220, 100), MakeColor("black"), 1)
+    gRuleHUD  <- MakeLabel("", gRuleFont)
+    AddObject(gRuleHUD, gWin)
+    Move(gRuleHUD, Round(gVideoWidth * 0.50), 22)
+  
+    ## --- Secretary task buttons (built once, moved per round) ---
+    gSecretaryBtns <- MakeSecretaryButtons()
+
+    ## --- Urns task buttons (built once, moved per round) ---
+    gUrnsBtns <- MakeUrnsButtons()
+
+    ## --- Horizon task buttons (built once, moved per game) ---
+    gHorizonBtns <- MakeHorizonButtons()
+
+
+
+    ## --- Layout: vertical center of stimulus display ---
+    ## Narrowband bg is 1000px tall; heading bg is 200px tall (both 2000px wide).
+    ## "cued" display uses both: heading top ~20%, narrowband below.
+    if(taskDisplay == "heading")
+    {
+        bgHScaled  <- Round(200 * zoom)
+        gDispY     <- Round(gVideoHeight * 0.30)
+        gHeadDispY <- gDispY
+        gNbDispY   <- gDispY
+    } else {
+        if(taskDisplay == "cued")
+        {
+            ## Narrowband waterfall at normal position; heading strip above it for cue phase
+            bgHScaled  <- Round(1000 * zoom)
+            gNbDispY   <- Round(gVideoHeight * 0.50)
+            gHeadDispY <- gNbDispY - Round(bgHScaled / 2) - Round(200 * zoom / 2) - 10
+            gDispY     <- gNbDispY
+        } else {
+            bgHScaled  <- Round(1000 * zoom)
+            gDispY     <- Round(gVideoHeight * 0.38) + 50
+            gHeadDispY <- gDispY
+            gNbDispY   <- gDispY
+        }
+    }
+    gFbY <- gDispY + Round(bgHScaled / 2) + 35
+
+    ## --- Pre-load noise overlays FIRST so they render behind bg ---
+    ## Only used for narrowband display; loaded regardless for simplicity.
+    gNoiseImgs <- []
+    noiseIdx   <- 0
+    while(noiseIdx < 20)
+    {
+        if(noiseIdx < 10)
+        {
+            npath <- "img/noise/waterfall_noise_0" + noiseIdx + ".jpg"
+        } else {
+            npath <- "img/noise/waterfall_noise_" + noiseIdx + ".jpg"
+        }
+        nimg <- MakeImage(npath)
+        nimg.zoomx <- zoom
+        nimg.zoomy <- zoom
+        AddObject(nimg, gWin)
+        Move(nimg, gOffscreenX, gDispY)
+        PushOnEnd(gNoiseImgs, nimg)
+        noiseIdx <- noiseIdx + 1
+    }
+
+    ## --- Background: waterfall or heading strip ---
+    ## Added AFTER noise overlays so bg composites over them.
+    gBg        <- MakeImage("img/waterfall_bg.png")
+    gHeadingBg <- MakeImage("img/heading_bg.png")
+    AddObject(gBg, gWin)
+    AddObject(gHeadingBg, gWin)
+    gBg.zoomx        <- zoom
+    gBg.zoomy        <- zoom
+    gHeadingBg.zoomx <- zoom
+    gHeadingBg.zoomy <- zoom
+    Move(gBg,        gOffscreenX, gDispY)
+    Move(gHeadingBg, gOffscreenX, gDispY)
+
+    if(taskDisplay == "heading")
+    {
+        Move(gHeadingBg, Round(gVideoWidth/2), gDispY)
+    } else {
+        if(taskDisplay == "cued")
+        {
+            ## Heading strip always visible; narrowband bg moves in/out per trial
+            Move(gHeadingBg, Round(gVideoWidth/2), gHeadDispY)
+        } else {
+            Move(gBg, Round(gVideoWidth/2), gDispY)
+        }
+    }
+
+    vesselDisplayType <- gTaskDisplay
+    ## --- Build vessel thumbnails/labels AFTER bg so they render on top ---
+    ## Cued display: thumbnails show narrowband signatures (ID response after narrowband revealed)
+    if(gTaskDisplay == "cued") { vesselDisplayType <- "narrowband" }
+
+    
+    
+    gVessels <- BuildVessels(cfg.vessels, vesselDisplayType)
+
+    ## --- Response indicator box (gonogo) ---
+    tbgW         <- Round(gVideoWidth * 0.125)
+    thumbNativeW <- 240
+    thumbNativeH <- 120
+    if(gTaskDisplay == "heading") { thumbNativeH <- 60 }
+    tzoomX       <- tbgW / thumbNativeW
+    tbgH         <- Round(thumbNativeH * tzoomX)
+    gRespBoxCol  <- MakeColorRGB(60, 230, 60)
+    gResponseBox <- Rectangle(gOffscreenX, gDispY, tbgW + 6, tbgH + 6, gRespBoxCol, 0)
+    AddObject(gResponseBox, gWin)
+
+
+
+}
+
+## ============================================================
+## START
+## ============================================================
+
+define Start(p)
+{
+    InitializeUpload()
+    gWin <- MakeWindow("black")
+
+    if(gSubNum + "" == "0")
+    {
+        gSubNum <- GetSubNum(gWin)
+    }
+
+
+
+    ## --- Load config via named parameter ---
+    ## Schema defines "task" parameter (default "askuser").
+    ## Online: PEBLHub serves the par.json via its API; CreateParameters reads it.
+    ## Local with --pfile: reads the specified par.json.
+    ## Local without --pfile: reads params/sonar-task.pbl.par.json (default).
+    parpairs <- [["task", "askuser"],
+    	         ["useAudio",0],                ##Use audio bg + stimuli
+		 ["useWaterfallAnimation",0]]   ##Should waterfall animate when running?
+		 
+    gParams  <- CreateParameters(parpairs, gParamFile)
+
+
+   
+    taskName <- gParams.task
+    if(taskName == "askuser")
+    {
+        allFiles  <- GetDirectoryListing("config")
+        jsonFiles <- []
+        loop(f, allFiles)
+        {
+            flen <- StringLength(f)
+            if(flen > 5)
+            {
+                ext <- SubString(f, flen - 4, flen)
+                if(ext == ".json") { PushOnEnd(jsonFiles, f) }
+            }
+        }
+        if(Length(jsonFiles) == 0)
+        {
+            SignalFatalError("No .json files found in config/")
+        }
+        fullPaths <- []
+        loop(f, jsonFiles)
+        {
+            PushOnEnd(fullPaths, "config/" + f)
+        }
+        cfgPath <- PickConfigFile(jsonFiles, fullPaths, gWin)
+    } else {
+        cfgPath <- "config/" + taskName + ".json"
+    }
+
+    Print("Loading config: " + cfgPath)
+    if(FileExists(cfgPath))
+    {
+        cfg <- ParseJSON(FileReadText(cfgPath))
+    } else {
+        SignalFatalError("Config not found: " + cfgPath)
+    }
+
+
+    taskId <- cfg.task_id
+
+    gTaskDisplay <- "narrowband"
+    if(PropertyExists(cfg, "display"))
+    {
+        gTaskDisplay <- cfg.display
+    }
+
+
+   InitializeUI(gTaskDisplay,cfg)
+
+
+
+    ## --- Data file ---
+    dataHeader <- "subnum,task_id,block_id,response_mode,trial,vessel_id,vessel_name,response,correct,outcome,points,signal_mode,rt_ms,rt2_ms,abstime,base_sig,actual_sig,n_shown,n_extra,n_missing,bearing,congruent,reported_correct,n_consec,n_reversals,correct_vessel,confidence"
+    dataFile <- GetNewDataFile(gSubNum, gWin, "sonar-task", "csv", dataHeader)
+
+
+    ## --- Click-to-begin label ---
+    gClickLbl <- MakeLabel("[ Click here to begin ]", gFontSmall)
+
+    ## --- Run blocks ---
+    jsonBlocks <- cfg.blocks
+    loop(jb, jsonBlocks)
+    {
+        blockCfg <- BuildBlockCfg(jb, taskId)
+
+        ## Per-block vessel overrides: if block defines a vessels array,
+        ## apply response_side (and bearings) overrides to matching gVessels objects.
+        if(PropertyExists(jb, "vessels"))
+        {
+            loop(jbv, jb.vessels)
+            {
+                loop(v, gVessels)
+                {
+                    if(v.id == jbv.id)
+                    {
+                        if(PropertyExists(jbv, "response_side")) { v.response_side <- jbv.response_side }
+                        if(PropertyExists(jbv, "bearings"))      { v.bearings      <- jbv.bearings }
+                    }
+                }
+            }
+        }
+
+        if(blockCfg.show_thumbnails == 0 or
+           blockCfg.response_mode == "bandit" or
+           blockCfg.response_mode == "secretary" or
+           blockCfg.response_mode == "urns" or
+           blockCfg.response_mode == "horizon")
+        {
+            loop(v, gVessels) { Hide(v.thumbImg); Hide(v.lbl) }
+            Draw()
+        }
+        ShowBlockInstructions(blockCfg, gClickLbl)
+        RunBlock(blockCfg, gVessels, gNoiseImgs, gDispY, gFbY, gOffscreenX, dataFile)
+
+        ## Restore vessel properties from top-level cfg after block completes
+        if(PropertyExists(jb, "vessels"))
+        {
+            loop(cfgv, cfg.vessels)
+            {
+                loop(v, gVessels)
+                {
+                    if(v.id == cfgv.id)
+                    {
+                        if(PropertyExists(cfgv, "response_side")) { v.response_side <- cfgv.response_side }
+                        if(PropertyExists(cfgv, "bearings"))      { v.bearings      <- cfgv.bearings }
+                    }
+                }
+            }
+        }
+    }
+
+    ## --- Wrap up ---
+    FileClose(dataFile)
+    UploadFile(gSubNum, dataFile.filename)
+
+    done <- MakeLabel("Task complete. Click anywhere to exit.", gFontLarge)
+    AddObject(done, gWin)
+    Move(done, Round(gVideoWidth/2), Round(gVideoHeight/2))
+    Draw()
+    WaitForDownClick()
+}

@@ -1,0 +1,76 @@
+{
+  "task_id": "sonar-demo",
+  "display": "narrowband",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Shchuka-B",
+      "sig": [50, 125, 340, 1200, 1541],
+      "sound": "sounds/sub_nuke.ogg"
+    },
+    {
+      "id": 2,
+      "name": "Kilo-877",
+      "sig": [40, 135, 320, 1100, 1490],
+      "sound": "sounds/sub_diesel.ogg"
+    }
+  ],
+  "blocks": [
+    {
+      "id": "round1",
+      "label": "Round 1",
+      "instructions": "<h3=center>Round 1: Vessel Identification</h3>On each trial, identify the unknown vessel by clicking its signature below.<li>All <b>5 characteristic frequency bands</b> are visible<li>Study the thumbnail signatures at the bottom — click the matching one",
+      "trials": 10,
+      "base_rate": 0.5,
+      "signal_mode": "clean",
+      "signal_params": { "jitter_sd": 20, "n_noise_min": 1, "n_noise_max": 2, "n_mimic": 2, "p_show": 0.75 },
+      "feedback": "accuracy",
+      "isi": 1000
+    },
+    {
+      "id": "round2",
+      "label": "Round 2",
+      "instructions": "<h3=center>Round 2: Frequency Uncertainty</h3>Doppler shift and depth changes cause bands to appear at <b>slightly wrong frequencies</b>.<li>All 5 bands are present but each is shifted by roughly <b>+/- 20 Hz</b><li>Focus on the <b>overall layout</b>, not exact positions",
+      "trials": 10,
+      "base_rate": 0.5,
+      "signal_mode": "jitter",
+      "signal_params": { "jitter_sd": 10, "n_noise_min": 1, "n_noise_max": 2, "n_mimic": 2, "p_show": 0.75 },
+      "feedback": "accuracy",
+      "isi": 1000
+    },
+    {
+      "id": "round3",
+      "label": "Round 3",
+      "instructions": "<h3=center>Round 3: Noisy Conditions</h3>Sea shelf echoes and <b>biologicals</b> add extra bands to the display.<li>All 5 true bands are still present<li><b>1-2 extra noise bands</b> are also shown — ignore them",
+      "trials": 10,
+      "base_rate": 0.5,
+      "signal_mode": "noisy",
+      "signal_params": { "jitter_sd": 20, "n_noise_min": 1, "n_noise_max": 2, "n_mimic": 2, "p_show": 0.75 },
+      "feedback": "accuracy",
+      "isi": 1000
+    },
+    {
+      "id": "round4",
+      "label": "Round 4",
+      "instructions": "<h3=center>Round 4: Acoustic Mimicry</h3>A nearby vessel adds <b>bands from the other vessel's signature</b> to the display.<li>5 true bands + <b>1-2 mimic bands</b> from the opposing vessel<li>Focus on the <b>overall pattern</b>",
+      "trials": 10,
+      "base_rate": 0.5,
+      "signal_mode": "mimic",
+      "signal_params": { "jitter_sd": 20, "n_noise_min": 1, "n_noise_max": 2, "n_mimic": 2, "p_show": 0.75 },
+      "feedback": "accuracy",
+      "isi": 1000
+    },
+    {
+      "id": "round5",
+      "label": "Round 5",
+      "instructions": "<h3=center>Round 5: Intermittent Signals</h3>Cavitation and acoustic shadowing cause bands to <b>randomly disappear</b>.<li>Each true band has a <b>75% chance</b> of appearing<li>Use all visible evidence — some trials will show only 2-3 bands",
+      "trials": 10,
+      "base_rate": 0.5,
+      "signal_mode": "prob",
+      "signal_params": { "jitter_sd": 20, "n_noise_min": 1, "n_noise_max": 2, "n_mimic": 2, "p_show": 0.75 },
+      "feedback": "accuracy",
+      "isi": 1000
+    }
+  ]
+}

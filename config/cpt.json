@@ -1,0 +1,33 @@
+{
+  "task_id": "cpt",
+  "display": "narrowband",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Shchuka-B",
+      "sig": [50, 125, 340, 1200, 1541]
+    },
+    {
+      "id": 2,
+      "name": "Kilo-877",
+      "sig": [40, 135, 320, 1100, 1490]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "vigilance",
+      "label": "Sonar Watch",
+      "instructions": "<h3=center>Sonar Watch — Continuous Performance</h3>You are on a long sonar watch. Most contacts are the common <b>Kilo-877</b>.<li><b>Click immediately</b> when you detect the rare <b>Shchuka-B</b> (nuclear sub)<li><b>Do nothing</b> for Kilo-877 contacts<li>You have <b>800ms</b> to respond<li>Stay alert — targets appear only 20% of the time",
+      "trials": 100,
+      "base_rate": 0.2,
+      "response_mode": "gonogo",
+      "gonogo_go_vessel": 1,
+      "gonogo_response_window": 800,
+      "signal_mode": "noisy",
+      "signal_params": { "jitter_sd": 15, "n_noise_min": 1, "n_noise_max": 3 },
+      "feedback": "none",
+      "isi": 1200
+    }
+  ]
+}

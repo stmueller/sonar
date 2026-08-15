@@ -1,0 +1,69 @@
+{
+  "task_id": "bst",
+  "display": "heading",
+  "audio": false,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "Mechanical",
+      "sig": [90, 8],
+      "contact_type": "solid",
+      "response_side": "left",
+      "bearings": [70, 80, 90, 100, 110, 75, 85, 95, 105, 270]
+    },
+    {
+      "id": 2,
+      "name": "Biological",
+      "sig": [270, 8],
+      "contact_type": "noisy",
+      "response_side": "right",
+      "bearings": [250, 260, 270, 280, 290, 255, 265, 275, 285, 90]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "univalent",
+      "label": "Block 1 — Univalent",
+      "instructions": "<h3=center>Contact Classification — Block 1</h3>Two contact types will appear on the bearing display.<li><b>Mechanical</b> (solid stripe): click <b>LEFT</b><li><b>Biological</b> (diffuse stripe): click <b>RIGHT</b><li>Respond based on contact type. Contacts usually appear on their expected side but not always.<li>Respond as quickly and accurately as possible.",
+      "trials": 20,
+      "base_rate": 0.5,
+      "response_mode": "simon",
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 3 },
+      "feedback": "accuracy",
+      "isi": 800
+    },
+    {
+      "id": "bivalent",
+      "label": "Block 2 — Bivalent (Reversed)",
+      "instructions": "<h3=center>Contact Classification — Block 2</h3>The mapping has reversed.<li><b>Mechanical</b> (solid stripe): now click <b>RIGHT</b><li><b>Biological</b> (diffuse stripe): now click <b>LEFT</b><li>Use the new mapping. Respond as quickly and accurately as possible.",
+      "trials": 20,
+      "base_rate": 0.5,
+      "response_mode": "simon",
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 3 },
+      "feedback": "accuracy",
+      "isi": 800,
+      "vessels": [
+        { "id": 1, "response_side": "right" },
+        { "id": 2, "response_side": "left" }
+      ]
+    },
+    {
+      "id": "bivalent2",
+      "label": "Block 3 — Bivalent (no feedback)",
+      "instructions": "<h3=center>Contact Classification — Block 3</h3>Same reversed mapping: <b>Mechanical</b> → RIGHT, <b>Biological</b> → LEFT.<li>No feedback this block.",
+      "trials": 20,
+      "base_rate": 0.5,
+      "response_mode": "simon",
+      "signal_mode": "jittered",
+      "signal_params": { "jitter_sd": 3 },
+      "feedback": "none",
+      "isi": 800,
+      "vessels": [
+        { "id": 1, "response_side": "right" },
+        { "id": 2, "response_side": "left" }
+      ]
+    }
+  ]
+}

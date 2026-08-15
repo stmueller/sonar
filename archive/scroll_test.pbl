@@ -1,0 +1,126 @@
+## Scroll test: single-row scrolling waterfall (row 2 of sonar display).
+## Viewport = one row tall. 2-copy looping. ~28s history at 1px per 200ms.
+## Each copy has independently loaded image objects (MakeImage called per copy).
+## Copy stored as [noise_obj, stripe_obj, noise_y_offset] for correct positioning.
+
+define RandStripe()
+{
+    v <- Round(Random() * 7)
+    if(v < 10) { vstr <- "0" + v } else { vstr <- "" + v }
+    return "img/stripes/stripe_r2_v" + vstr + ".png"
+}
+
+define RandNoise()
+{
+    n <- Round(Random() * 19)
+    if(n < 10)
+    {
+        path <- "img/waterfall_rownoise_0" + n + ".png"
+    } else {
+        path <- "img/waterfall_rownoise_" + n + ".png"
+    }
+    return path
+}
+
+## Build one copy at viewport-relative y_center. Returns [noise, stripe].
+## Each call creates fresh MakeImage objects -- no shared references.
+define MakeCopy(y_center)
+{
+    noise <- MakeImage(RandNoise())
+    noise.zoomx <- gZoom
+    noise.zoomy <- gZoom
+    AddObject(noise, gViewport)
+    Move(noise, Round(gVpW / 2), y_center)
+
+    stripe <- MakeImage(RandStripe())
+    stripe.zoomx <- gZoom * 4.0
+    stripe.zoomy <- gZoom
+    AddObject(stripe, gViewport)
+    Move(stripe, Round(gVpW / 2), y_center)
+
+    return [noise, stripe]
+}
+
+define RemoveCopy(copy)
+{
+    loop(obj, copy) { RemoveObject(obj, gViewport) }
+}
+
+define MoveCopy(copy, y_center)
+{
+    loop(obj, copy) { Move(obj, Round(gVpW / 2), y_center) }
+}
+
+define ScrollTick(evt:0)
+{
+    if(gScrollActive == 1)
+    {
+        y0 <- Nth(gCopyY, 1) - 1
+        y1 <- Nth(gCopyY, 2) - 1
+
+        ## Recycle copy 0 when its bottom edge fully leaves viewport top (y + h/2 < 0)
+        if(y0 + Round(gVpH / 2) < 0)
+        {
+            RemoveCopy(Nth(gCopyObjs, 1))
+            y0      <- y1 + gVpH
+            newObjs <- MakeCopy(y0)
+            gCopyObjs <- [Nth(gCopyObjs, 2), newObjs]
+            gCopyY    <- [y1, y0]
+            ResetCanvas(gViewport)
+        } else {
+            gCopyY <- [y0, y1]
+            MoveCopy(Nth(gCopyObjs, 1), y0)
+            MoveCopy(Nth(gCopyObjs, 2), y1)
+        }
+
+        Draw()
+        RegisterEvent("<TIMER>", 1, GetTime() + 200, "<GEQ>", "ScrollTick", [])
+    }
+    return "<REMOVE>"
+}
+
+
+define Start(p)
+{
+    gWin <- MakeWindow("black")
+
+    gZoom  <- gVideoWidth / 2000.0 * 0.5
+    gVpW   <- Round(2000 * gZoom)
+    gVpH   <- Round(291  * gZoom)   ## one row region height
+
+    gScrollActive <- 0
+
+    gViewport <- MakeCanvas(gVpW, gVpH, MakeColor("black"))
+    AddObject(gViewport, gWin)
+    Move(gViewport, Round(gVideoWidth / 2), Round(gVideoHeight / 2))
+
+    ## Copy 0 at viewport center (visible), copy 1 one row below (incoming)
+    y0 <- Round(gVpH / 2)
+    y1 <- Round(gVpH / 2) + gVpH
+
+    objs0 <- MakeCopy(y0)
+    objs1 <- MakeCopy(y1)
+
+    gCopyObjs <- [objs0, objs1]
+    gCopyY    <- [y0, y1]
+
+    Draw()
+
+    font <- MakeFont("DejaVuSans.ttf", 0, 24, MakeColor("yellow"), MakeColor("black"), 1)
+    btn  <- MakeLabel("[ Click to respond ]", font)
+    AddObject(btn, gWin)
+    Move(btn, Round(gVideoWidth / 2), Round(gVideoHeight * 0.85))
+    Draw()
+
+    gScrollActive <- 1
+    RegisterEvent("<TIMER>", 1, GetTime() + 200, "<GEQ>", "ScrollTick", [])
+    resp <- WaitForClickOnTarget([btn], [1])
+    gScrollActive <- 0
+
+    font2 <- MakeFont("DejaVuSans.ttf", 0, 28, MakeColor("white"), MakeColor("black"), 1)
+    lbl   <- MakeLabel("Done.", font2)
+    AddObject(lbl, gWin)
+    Move(lbl, Round(gVideoWidth / 2), Round(gVideoHeight / 2))
+    Draw()
+    Wait(2000)
+}
