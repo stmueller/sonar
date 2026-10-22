@@ -218,7 +218,7 @@
       "id": "block-type-1c",
       "label": "Watch — Regime 3 (no reference signatures, no feedback)",
       "rule_text": "Kilo-A | Biological | Kilo-B",
-      "instructions": "<h2>Sonar Watch — Regime 3</h2><br><hr><br>This is the most realistic watch: <b>no trial-by-trial feedback</b>. You will not be told whether each answer was correct.<br><br>Continue classifying contacts and rating confidence as before. Points still accumulate using the same confidence rule, but your <b>score updates only at the end of this block</b>.<br><br><h3>Scoring reminder</h3><br><li>Correct: <b>+4 … +20</b><br><li>Incorrect: <b>−4 … −20</b><br><li>Same confidence scale (1–5)<br><br>Click to begin the final regime.",
+      "instructions": "<h2>Sonar Watch — Regime 3</h2><br><hr><br>This is the most realistic watch: <b>no trial-by-trial feedback</b>. You will not be told whether each answer was correct.<br><br>Continue classifying contacts and rating confidence as before. Points still accumulate using the same confidence rule, but your <b>score updates only at the end of this block</b>.<br><br><h3>Scoring reminder</h3><br><li>Correct: <b>+4 … +20</b><br><li>Incorrect: <b>−4 … −20</b><br><li>Same confidence scale (1–5)<br><br>Click to continue.",
       "trials": 15,
       "repetitions": 2,
       "randomseed": 1002,
@@ -253,6 +253,34 @@
         -16,
         -20
       ]
+    },
+    {
+      "id": "block-threshold",
+      "label": "Watch — Classification threshold",
+      "rule_text": "Kilo-A | Biological | Kilo-B",
+      "instructions": "<h2>Sonar Watch — Classification threshold</h2><br><hr><br>Final watch under <b>variable water conditions</b>: some contacts are nearly as clear as the prototypes you trained on; others are much noisier.<br><br>Most contacts are Kilo-A or Kilo-B. Classify each as Kilo-A, Biological, or Kilo-B. There is <b>no trial-by-trial feedback</b>. Use confidence as before — points still use the same 4×confidence rule and update at the end of the block.<br><br><h3>Scoring reminder</h3><br><li>Correct: <b>+4 … +20</b><br><li>Incorrect: <b>−4 … −20</b><br><br>Click to begin.",
+      "trials": 9,
+      "repetitions": 2,
+      "randomseed": 2001,
+      "vessel_counts": [4, 1, 4],
+      "response_mode": "choice",
+      "signal_mode": "jittered",
+      "signal_params": {
+        "jitter_sd": 10,
+        "jitter_trunc_sd": 1.8
+      },
+      "noise_profiles": [
+        { "jitter_sd": 5, "count": 5 },
+        { "jitter_sd": 20, "count": 4 }
+      ],
+      "show_thumbnails": 0,
+      "feedback": "none",
+      "collect_confidence": 1,
+      "confidence_levels": 5,
+      "isi": 800,
+      "scoring": "confidence",
+      "payoff_correct_by_conf": [4, 8, 12, 16, 20],
+      "payoff_incorrect_by_conf": [-4, -8, -12, -16, -20]
     }
   ]
 }

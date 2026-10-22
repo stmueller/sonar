@@ -1,0 +1,91 @@
+{
+  "task_id": "sabart",
+  "display": "narrowband",
+  "audio": true,
+  "vessels": [
+    {
+      "id": 1,
+      "name": "LCS",
+      "sig": [90, 250, 480, 720],
+      "bart_life": 8
+    },
+    {
+      "id": 2,
+      "name": "Destroyer",
+      "sig": [50, 125, 340, 1200, 1541],
+      "bart_life": 16
+    },
+    {
+      "id": 3,
+      "name": "Carrier",
+      "sig": [40, 180, 400, 650, 900, 1300, 1600],
+      "bart_life": 128
+    }
+  ],
+  "blocks": [
+    {
+      "id": "practice",
+      "label": "Practice",
+      "rule_text": "WAIT to record. RETRIEVE DEVICE before they ping you.",
+      "instructions": "<h3=center>Cable Intercept — Practice</h3>A collection device is attached to an underwater communications cable. You can intercept enemy traffic but cannot decode it here — the more you record, the better. An enemy ship is in the area.<li>Each <b>WAIT</b> records more traffic from the device<li><b>RETRIEVE DEVICE</b> recovers the recorder and you leave — a safe exfiltration. You keep that take<li>If enemy sonar pings you, you will see <b>PING DETECTED</b>. Your commander then cuts the cable, and that intercept is lost<li>When the area clears, you return and try again<li><b>LCS</b> — littoral combat ship on anti-submarine station (barrier or escort). With the ASW package embarked, they are looking for contacts like yours<li><b>Destroyer</b> — guided-missile destroyer. Fitted for ASW (hull sonar, towed array, MH-60R) but multi-mission: air defense, BMD, or strike often have the watch. They can ping you; they are not always looking<li><b>Carrier</b> — the high-value unit. The carrier itself is not an ASW shooter; strike-group escorts and aircraft are. The screen can still ping you<li>The waterfall shows the nearby ship, not the cable. Learn the three signatures. The yellow bar is time on the device, not a countdown.",
+      "trials": 6,
+      "response_mode": "sabart",
+      "signal_mode": "clean",
+      "feedback": "none",
+      "sabart_points_per_wait": 5,
+      "sabart_min_waits": 0,
+      "isi": 800
+    },
+    {
+      "id": "phase1",
+      "label": "Mixed contacts",
+      "rule_text": "WAIT to record. RETRIEVE DEVICE before they ping you.",
+      "instructions": "<h3=center>Cable Intercept — Mixed contacts</h3>The area has cleared. The device is back on the cable. Nearby ships will be an LCS, a destroyer, or a carrier, in mixed order. Record as much traffic as you can, then retrieve the device and leave.<li><b>LCS</b> — on ASW station, looking for you<li><b>Destroyer</b> — ASW-capable, often assigned other duties<li><b>Carrier</b> — not an ASW shooter; the screen may still ping you",
+      "trials": 30,
+      "response_mode": "sabart",
+      "signal_mode": "clean",
+      "feedback": "none",
+      "sabart_points_per_wait": 5,
+      "isi": 600
+    },
+    {
+      "id": "phase2_lcs",
+      "label": "LCS",
+      "rule_text": "LCS on ASW station. WAIT or RETRIEVE DEVICE.",
+      "instructions": "<h3=center>Cable Intercept — LCS nearby</h3>The area has cleared. An LCS on anti-submarine station is in the area. They are looking for contacts like yours.<li>WAIT to record more traffic. RETRIEVE DEVICE before they ping you.",
+      "trials": 20,
+      "response_mode": "sabart",
+      "sabart_vessel": 1,
+      "signal_mode": "clean",
+      "feedback": "none",
+      "sabart_points_per_wait": 5,
+      "isi": 600
+    },
+    {
+      "id": "phase2_destroyer",
+      "label": "Destroyer",
+      "rule_text": "Destroyer is multi-mission. WAIT or RETRIEVE DEVICE.",
+      "instructions": "<h3=center>Cable Intercept — Destroyer nearby</h3>The area has cleared. A guided-missile destroyer is in the area. Fitted for ASW, but air defense, BMD, or strike often have the watch.<li>WAIT to record more traffic. RETRIEVE DEVICE before they ping you.",
+      "trials": 20,
+      "response_mode": "sabart",
+      "sabart_vessel": 2,
+      "signal_mode": "clean",
+      "feedback": "none",
+      "sabart_points_per_wait": 5,
+      "isi": 600
+    },
+    {
+      "id": "phase2_carrier",
+      "label": "Carrier",
+      "rule_text": "Carrier is the HVU. The screen can still ping you.",
+      "instructions": "<h3=center>Cable Intercept — Carrier nearby</h3>The area has cleared. An aircraft carrier is in the area — the high-value unit. The carrier itself is not an ASW shooter; escorts and aircraft in the strike group are.<li>WAIT to record more traffic. RETRIEVE DEVICE before the screen pings you.",
+      "trials": 20,
+      "response_mode": "sabart",
+      "sabart_vessel": 3,
+      "signal_mode": "clean",
+      "feedback": "none",
+      "sabart_points_per_wait": 5,
+      "isi": 600
+    }
+  ]
+}

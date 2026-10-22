@@ -18,7 +18,7 @@
     {
       "id": "practice",
       "label": "Practice",
-      "instructions": "<h3=center>Vessel Identification — Practice</h3>On each trial an acoustic signature appears on the display.<li>Click the matching vessel thumbnail at the bottom of the screen.<li>After your response, rate your confidence on a 1–4 scale.<li>Feedback will follow each trial.",
+      "instructions": "<h3=center>Vessel Identification — Practice</h3>On each trial an acoustic signature appears on the display.<li>Press <b>1</b> for Shchuka-B, <b>0</b> for Kilo-877 (or use mouse if configured).<li>Then rate confidence with <b>1 / 2 / 9 / 0</b> (guess → certain).<li>Feedback will follow each trial.",
       "trials": 20,
       "base_rate": 0.5,
       "signal_mode": "jittered",
@@ -30,7 +30,7 @@
     {
       "id": "main",
       "label": "Main Task",
-      "instructions": "<h3=center>Vessel Identification</h3>Identify each vessel from its acoustic signature. Click the matching thumbnail, then rate your confidence.<li>No feedback in this block.",
+      "instructions": "<h3=center>Vessel Identification</h3>Identify each vessel from its acoustic signature. Press <b>1</b> or <b>0</b>, then rate confidence with <b>1 / 2 / 9 / 0</b>.<li>No feedback in this block.",
       "trials": 100,
       "base_rate": 0.5,
       "signal_mode": "jittered",

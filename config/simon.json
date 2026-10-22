@@ -24,7 +24,7 @@
     {
       "id": "practice",
       "label": "Practice",
-      "instructions": "<h3=center>Simon Task — Practice</h3>Two vessel types appear on the bearing display.<li><b>Alpha</b> contact: always click the <b>LEFT</b> half of the screen<li><b>Bravo</b> contact: always click the <b>RIGHT</b> half of the screen<li>Respond based on vessel identity — <b>ignore where it appears</b><li>Respond as quickly as possible<li>Feedback will tell you if you were correct",
+      "instructions": "<h3=center>Simon Task — Practice</h3>Two vessel types appear on the bearing display.<li><b>LEFT <- Mechanical</b><li><b>Biological -> RIGHT</b><li>Respond based on vessel identity — <b>ignore where it appears</b><li>Respond as quickly as possible<li>Feedback will tell you if you were correct",
       "trials": 20,
       "base_rate": 0.5,
       "response_mode": "simon",
@@ -36,7 +36,7 @@
     {
       "id": "main",
       "label": "Main Task",
-      "instructions": "<h3=center>Simon Task</h3>Continue: <b>Alpha → LEFT</b>, <b>Bravo → RIGHT</b>.<li>Respond based on vessel identity — ignore bearing position<li>No feedback in this block",
+      "instructions": "<h3=center>Simon Task</h3>Continue: <b>LEFT <- Mechanical</b>, <b>Biological -> RIGHT</b>.<li>Respond based on vessel identity — ignore bearing position<li>No feedback in this block",
       "trials": 120,
       "base_rate": 0.5,
       "response_mode": "simon",

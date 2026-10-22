@@ -20,7 +20,7 @@
     {
       "id": "practice",
       "label": "Practice",
-      "instructions": "<h3=center>Contact Investigation — Practice</h3>A bearing cue will flash briefly on the heading display.<li>The acoustic signature then appears on the waterfall — identify the vessel<li>Click <b>Alpha</b> or <b>Bravo</b> based on the signature<li>The cue usually predicts the vessel identity, but not always<li>Feedback will tell you if you were correct",
+      "instructions": "<h3=center>Contact Investigation — Practice</h3>A bearing cue will flash briefly on the heading display.<li>The acoustic signature then appears on the waterfall — identify the vessel<li>Respond <b>LEFT</b> for Alpha, <b>RIGHT</b> for Bravo (keys, mouse buttons, or click)<li>The cue usually predicts the vessel identity, but not always<li>Feedback will tell you if you were correct",
       "trials": 20,
       "base_rate": 0.5,
       "cue_validity": 0.8,

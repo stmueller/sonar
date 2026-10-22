@@ -37,6 +37,18 @@ Set `"task"` in `params/sonar-task.pbl.par.json` to a config stem (e.g. `2afc`, 
 
 Data files are written under `data/` (gitignored).
 
+## Trial scheduling (case list)
+
+Blocks can pin an exact design instead of sampling each trial independently:
+
+| Field | Role |
+|-------|------|
+| `vessel_counts` | Exact class counts in `vessels[]` order → shuffled case list |
+| `repetitions` | Replay each base case with the same forced signature |
+| `noise_profiles` | Per-case `signal_params` overrides (e.g. mix of low/high `jitter_sd`); each entry needs `count`; inherits unspecified fields from block `signal_params` |
+
+If `noise_profiles` is omitted, the block’s single `signal_params` applies to every trial (legacy behavior). See `SONAR_TASK_ARCHITECTURE.md` and `config/nafc_study1.json` (`block-threshold`). Quick local check: set `task` to `nafc-threshold-mini-demo` (9 trials, one block) or run the full shortened study via `nafc-study1-demo`.
+
 ## Audio and animation
 
 `sonar-task.pbl` currently exposes `useAudio` and `useWaterfallAnimation` parameters; wiring those to playback and the scrolling simulator is in progress. Archive scripts under `archive/` show the earlier audio + scroll patterns.
