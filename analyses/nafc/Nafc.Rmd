@@ -98,7 +98,8 @@ dat |>
   count(vessel_name, base_sig, proto_sig, name = "n") |>
   arrange(desc(n))
 
-summary(dat$base_sig_ok)
+mean(dat$base_sig_ok, na.rm = TRUE)
+table(dat$base_sig_ok, useNA = "ifany")
 ```
 
 ## Kilo-A mistaken for Biological
@@ -286,7 +287,9 @@ for (i in seq_len(nrow(hard))) {
 
 ## Assess similarity of responses
 
-Visual distance: map each **band index** (1…5) to waterfall row coordinates (0–250 / 250–750 / 750–1750 Hz). Do **not** sort frequencies before comparing — sorting mixes bands and inflates distances when row slot counts differ.
+Visual distance on the **observed** marks: split each signature into waterfall rows (≤250 / 250–750 / >750 Hz), **sort within row** (jitter can swap order in a row), scale to display coordinates, then compare. That matches “how far apart do these two waterfall plots look?” even when noise moves energy across nominal generator slots.
+
+The old helper sorted globally, then concatenated scaled rows and used `sum((a-b)^2)`. When jitter puts different counts in a row (e.g. one contact has two low-row marks, another has one), those vectors differ in length and R **silently recycles** — that is the bug, not sorting itself. Below, `row_ss` pairs the first *k* sorted marks per row and adds penalty for unpaired extras.
 
 ```{r sigdist-standards}
 scale_band_hz <- function(f) {
@@ -295,10 +298,51 @@ scale_band_hz <- function(f) {
   else (f - 750) / 1000 + 2.0
 }
 
-## Index-aligned visual distance (same band slot vs same band slot).
+split_waterfall_rows <- function(sig) {
+  list(
+    row1 = sig[sig <= 250],
+    row2 = sig[sig > 250 & sig <= 750],
+    row3 = sig[sig > 750]
+  )
+}
+
+## Sum of squared scaled diffs for one waterfall row (sorted observed bands).
+row_ss <- function(a, b) {
+  a <- sort(a)
+  b <- sort(b)
+  if (length(a) == 0 && length(b) == 0) return(0)
+  nmin <- min(length(a), length(b))
+  ss <- 0
+  if (nmin > 0) {
+    sa <- vapply(a[seq_len(nmin)], scale_band_hz, numeric(1))
+    sb <- vapply(b[seq_len(nmin)], scale_band_hz, numeric(1))
+    ss <- ss + sum((sa - sb)^2)
+  }
+  if (length(a) > nmin) {
+    sa <- vapply(a[(nmin + 1):length(a)], scale_band_hz, numeric(1))
+    ss <- ss + sum(sa^2)
+  }
+  if (length(b) > nmin) {
+    sb <- vapply(b[(nmin + 1):length(b)], scale_band_hz, numeric(1))
+    ss <- ss + sum(sb^2)
+  }
+  ss
+}
+
 sigdist <- function(sig1, sig2) {
+  r1 <- split_waterfall_rows(sig1)
+  r2 <- split_waterfall_rows(sig2)
+  sqrt(
+    row_ss(r1$row1, r2$row1) +
+      row_ss(r1$row2, r2$row2) +
+      row_ss(r1$row3, r2$row3)
+  )
+}
+
+## Optional: generator slot *i* vs *i* (ignores row resorting). Useful for config tuning only.
+sigdist_by_index <- function(sig1, sig2) {
   if (length(sig1) != length(sig2)) {
-    stop("sigdist expects equal-length signatures, got ", length(sig1), " and ", length(sig2))
+    stop("sigdist_by_index expects equal-length signatures")
   }
   s1 <- vapply(sig1, scale_band_hz, numeric(1))
   s2 <- vapply(sig2, scale_band_hz, numeric(1))
@@ -324,7 +368,16 @@ near_kilo <- tibble(
 )
 near_kilo
 
-barplot(distmatrix["kilo_a", ], main = "Visual distance to Kilo-A prototype")
+## Same “nearer Kilo” table using index-aligned distance (prototype slots, no within-row sort).
+near_kilo_index <- tibble(
+  template = bio_only,
+  d_kilo_a = vapply(bio_only, function(nm) sigdist_by_index(standards[[nm]], kilo_a), numeric(1)),
+  d_kilo_b = vapply(bio_only, function(nm) sigdist_by_index(standards[[nm]], kilo_b), numeric(1)),
+  nearer = if_else(d_kilo_a < d_kilo_b, "Kilo-A", if_else(d_kilo_b < d_kilo_a, "Kilo-B", "tie"))
+)
+near_kilo_index
+
+barplot(distmatrix["kilo_a", ], main = "Observed-band distance to Kilo-A prototype")
 barplot(distmatrix["kilo_b", ], main = "Visual distance to Kilo-B prototype")
 
 table(dat$vessel, dat$proto_sig)
