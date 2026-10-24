@@ -5163,6 +5163,8 @@ define BuildTrialCaseList(blockCfg, vessels)
         c.vessel_id <- vid
         c.template_idx <- tIdx
         c.template_name <- gLastActiveTemplate
+        ## Pre-jitter prototype for CSV base_sig (forced_sig is jittered actual).
+        c.base_sig <- CopyList(v.active_sig)
         c.sig <- CopyList(sig)
         c.jitter_sd <- params.jitter_sd
         c.noise_profile_idx <- pIdx
@@ -5187,6 +5189,21 @@ define ApplyTrialCase(blockCfg, vessels, caseObj)
     v.forced_template_idx <- caseObj.template_idx
     v.active_template <- caseObj.template_name
     gLastActiveTemplate <- caseObj.template_name
+    if(PropertyExists(caseObj, "base_sig"))
+    {
+        v.active_sig <- CopyList(caseObj.base_sig)
+    } else {
+        ## Legacy cases built before base_sig was stored: recover fixed template.
+        if(caseObj.template_idx > 0 and caseObj.template_idx <= v.n_templates)
+        {
+            tKind <- Nth(v.template_kinds, caseObj.template_idx)
+            if(tKind != "random")
+            {
+                bs <- Nth(v.templates, caseObj.template_idx)
+                if(Length(bs) > 0) { v.active_sig <- CopyList(bs) }
+            }
+        }
+    }
 
     if(PropertyExists(caseObj, "signal_params"))
     {

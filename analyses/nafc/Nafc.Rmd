@@ -1,0 +1,372 @@
+---
+title: "Nafc "
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+    fig_width: 7
+    fig_height: 4.5
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(comment = NA, warning = FALSE)
+library(tidyverse)
+library(ggplot2)
+library(jsonlite)
+#dat1  <- read.csv("data/shane-online/sonar-task-shane-online.csv", stringsAsFactors = FALSE)
+#dat2  <- read.csv("data/319/sonar-task-319.csv", stringsAsFactors = FALSE)
+#dat3  <- read.csv("data/beth/sonar-task-beth.csv", stringsAsFactors = FALSE)
+
+#dat2$subnum <- as.character(dat2$subnum)
+
+#dat <- bind_rows(dat1,dat2,dat3)
+#dat  <- read.csv("data/2AFC_1004/sonar-task-2AFC_1004.csv", stringsAsFactors = FALSE)
+#dat  <- read.csv("data/time301/sonar-task-time301.csv", stringsAsFactors = FALSE)
+
+dat  <- read.csv("data/5block/sonar-task-5block.csv", stringsAsFactors = FALSE)
+
+## Prototype signatures from the same JSON the task uses (config/nafc_study1.json).
+study_cfg <- jsonlite::fromJSON("../../config/nafc_study1.json")
+parse_sig <- function(x) {
+  x <- as.character(x)
+  as.numeric(strsplit(x, ";", fixed = TRUE)[[1]])
+}
+parse_sig_vec <- function(x) {
+  if (is.null(x) || (length(x) == 1 && is.na(x))) return(numeric(0))
+  if (is.list(x)) x <- x[[1]]
+  if (is.character(x)) return(parse_sig(x))
+  as.numeric(x)
+}
+vrow <- function(id) study_cfg$vessels[study_cfg$vessels$id == id, ]
+kilo_a <- parse_sig_vec(vrow(2)$sig)
+kilo_b <- parse_sig_vec(vrow(3)$sig)
+bio_tbl <- vrow(1)$templates[[1]]
+bio_templates <- setNames(
+  lapply(seq_len(nrow(bio_tbl)), function(i) parse_sig_vec(bio_tbl$sig[i])),
+  bio_tbl$name
+)
+bio_templates <- bio_templates[vapply(bio_templates, length, integer(1)) > 0]
+standards <- c(list(kilo_a = kilo_a), bio_templates, list(kilo_b = kilo_b))
+std_names <- names(standards)
+
+## Map logged vessel_name -> config prototype (fixes stale CSV base_sig on case-list blocks).
+template_label <- function(vessel_name) {
+  m <- str_match(vessel_name, "\\[(.+)\\]$")
+  if (is.na(m[1, 2])) return(NA_character_)
+  m[1, 2]
+}
+proto_for_trial <- function(vessel_id, vessel_name) {
+  if (vessel_id == 2L) return(kilo_a)
+  if (vessel_id == 3L) return(kilo_b)
+  lab <- template_label(vessel_name)
+  if (!is.na(lab) && lab %in% names(bio_templates)) return(bio_templates[[lab]])
+  numeric(0)
+}
+
+dat$block_id <- factor(dat$block_id,levels=c("practice","block-type-1a","block-type-1b","block-type-1c","block-threshold"))
+
+dat$vessel <- c("Biological","Kilo-A","Kilo-B")[dat$vessel_id]
+dat$proto_sig <- purrr::map2_chr(dat$vessel_id, dat$vessel_name, function(vid, vname) {
+  p <- proto_for_trial(vid, vname)
+  if (length(p) == 0) return(NA_character_)
+  paste(p, collapse = ";")
+})
+dat$base_sig_ok <- dat$base_sig == dat$proto_sig
+
+
+dat |> group_by(block_id,vessel) |> summarize(acc=mean(correct)) |> print()
+
+```
+
+```{r}
+dat |> group_by(block_id,vessel) |> summarize(acc=mean(correct)) |>
+  ggplot(aes(x=vessel,y=acc)) + geom_col() + facet_wrap(~block_id)
+
+table(dat$vessel_name,dat$response)
+table(dat$vessel_name,dat$block_id)
+
+```
+
+### Logged `base_sig` vs config prototype
+
+Case-list blocks used to log a **stale** `vessel.active_sig` (last template built for that class), not the template for the current trial. `proto_sig` below is recovered from `vessel_name` + config. Newer `sonar-task.pbl` stores per-case `base_sig` at trial time.
+
+```{r base-sig-audit}
+dat |>
+  filter(!base_sig_ok, vessel_id == 1L) |>
+  count(vessel_name, base_sig, proto_sig, name = "n") |>
+  arrange(desc(n))
+
+summary(dat$base_sig_ok)
+```
+
+## Kilo-A mistaken for Biological
+
+Response coding: `1` = Biological, `2` = Kilo-A, `3` = Kilo-B.
+Focus on true Kilo-A trials called Biological, by `instance_id` and jittered `actual_sig`.
+
+```{r kiloA-bio-misid}
+kiloA <- dat |>
+  filter(vessel_name == "Kilo-A") |>
+  mutate(
+    called_bio = response == 1,
+    block_type = if_else(block_id == "practice", "practice", "test")
+  )
+
+# Overall confusion for Kilo-A
+kiloA |>
+  count(response, correct) |>
+  mutate(label = case_when(
+    response == 1 ~ "called Biological",
+    response == 2 ~ "called Kilo-A",
+    response == 3 ~ "called Kilo-B",
+    TRUE ~ as.character(response)
+  )) |>
+  print()
+
+# Instance-level: which signatures are repeatedly mistaken?
+kiloA_by_inst <- kiloA |>
+  filter(block_id != "practice") |>
+  group_by(instance_id, base_sig) |>
+  summarize(
+    n = n(),
+    n_bio = sum(called_bio),
+    n_correct = sum(correct == 1),
+    p_bio = mean(called_bio),
+    mean_conf = mean(as.numeric(confidence), na.rm = TRUE),
+    actual_sigs = paste(sort(unique(actual_sig)), collapse = " | "),
+    .groups = "drop"
+  ) |>
+  arrange(desc(p_bio), desc(n_bio))
+
+kiloA_by_inst
+
+# Actual-signature level (the jittered tones actually shown)
+kiloA_by_sig <- kiloA |>
+  filter(block_id != "practice") |>
+  group_by(instance_id, base_sig, actual_sig) |>
+  summarize(
+    n = n(),
+    n_bio = sum(called_bio),
+    p_bio = mean(called_bio),
+    blocks = paste(sort(unique(as.character(block_id))), collapse = ", "),
+    .groups = "drop"
+  ) |>
+  arrange(desc(p_bio), desc(n_bio), instance_id)
+
+kiloA_by_sig
+
+# Plot: misidentification rate by instance
+kiloA_by_inst |>
+  mutate(instance_id = factor(instance_id, levels = instance_id[order(p_bio)])) |>
+  ggplot(aes(x = instance_id, y = p_bio, fill = p_bio)) +
+  geom_col() +
+  geom_text(aes(label = paste0(n_bio, "/", n)), vjust = -0.3, size = 3) +
+  scale_y_continuous(limits = c(0, 1.1), labels = scales::percent) +
+  scale_fill_gradient(low = "gray80", high = "firebrick", guide = "none") +
+  labs(
+    title = "Kilo-A → Biological misID rate by instance (test blocks)",
+    x = "instance_id",
+    y = "P(called Biological)"
+  )
+
+# Plot: misidentification rate by actual signature
+kiloA_by_sig |>
+  mutate(
+    sig_label = paste0("inst ", instance_id, "\n", actual_sig),
+    sig_label = factor(sig_label, levels = sig_label[order(p_bio)])
+  ) |>
+  ggplot(aes(x = sig_label, y = p_bio, fill = p_bio)) +
+  geom_col() +
+  geom_text(aes(label = paste0(n_bio, "/", n)), vjust = -0.3, size = 3) +
+  scale_y_continuous(limits = c(0, 1.1), labels = scales::percent) +
+  scale_fill_gradient(low = "gray80", high = "firebrick", guide = "none") +
+  labs(
+    title = "Kilo-A → Biological misID rate by actual_sig",
+    x = "instance + actual_sig",
+    y = "P(called Biological)"
+  ) +
+  theme(axis.text.x = element_text(size = 7, angle = 30, hjust = 1))
+
+# Trial-level detail for Bio misIDs only
+kiloA |>
+  filter(called_bio, block_id != "practice") |>
+  select(block_id, trial, instance_id, base_sig, actual_sig,
+         n_shown, n_extra, n_missing, confidence, rt_ms) |>
+  arrange(instance_id, actual_sig, block_id, trial)
+```
+
+### Hard-case signatures (waterfall)
+
+Green waterfall display from `../Stim_pilot.qmd`: **Kilo-A standard above**, **actual hard case middle**, **closest biological below**.
+Biological templates from `nafc_study1.json` (logged `base_sig` collapses all bios to one value).
+
+```{r kiloA-hard-sig-vis}
+# From Stim_pilot.qmd — three frequency rows (0–250 / 250–750 / 750–1750)
+plotWaterfall <- function(signature, title) {
+  green <- "green3"
+  bandwidth <- 1
+  par(bg = "black", fg = green)
+  plot(0, 0, xlim = c(0, 100), ylim = c(0, 4), type = "n", bty = "n",
+       xlab = "", ylab = "", axes = FALSE, main = title)
+  title(main = title, col.main = "red")
+
+  row1 <- signature[signature < 250]
+  row2 <- signature[signature >= 250 & signature < 750]
+  row3 <- signature[signature >= 750]
+
+  ymin <- 3; ymax <- ymin + 0.8; xmin <- 0; xmax <- 250
+  for (i in row1) {
+    valx <- (i - xmin) / (xmax - xmin) * 100
+    rect(valx - bandwidth, ymin, valx + bandwidth, ymax, col = green)
+  }
+
+  ymin <- 2; ymax <- ymin + 0.8; xmin <- 250; xmax <- 750
+  for (i in row2) {
+    valx <- (i - xmin) / (xmax - xmin) * 100
+    rect(valx - bandwidth, ymin, valx + bandwidth, ymax, col = green)
+  }
+
+  ymin <- 1; ymax <- ymin + 0.8; xmin <- 750; xmax <- 1750
+  for (i in row3) {
+    valx <- (i - xmin) / (xmax - xmin) * 100
+    rect(valx - bandwidth, ymin, valx + bandwidth, ymax, col = green)
+  }
+
+  segments(0, 1:3, 100, 1:3)
+  segments(0, 2:4 - 0.2, 100, 2:4 - 0.2)
+}
+
+closest_bio <- function(sig) {
+  d <- vapply(bio_templates, function(b) sqrt(sum((sig - b)^2)), numeric(1))
+  i <- which.min(d)
+  list(name = names(d)[i], sig = bio_templates[[i]], dist = unname(d[i]))
+}
+
+# Hard cases: actual_sigs with high Bio misID rate
+hard <- kiloA_by_sig |>
+  filter(p_bio >= 0.5) |>
+  arrange(desc(p_bio), desc(n_bio), instance_id)
+
+hard |>
+  mutate(
+    actual = purrr::map(actual_sig, parse_sig),
+    nearest = purrr::map(actual, closest_bio),
+    nearest_bio = purrr::map_chr(nearest, "name"),
+    dist = purrr::map_dbl(nearest, "dist"),
+    nearest_sig = purrr::map_chr(nearest, \(x) paste(x$sig, collapse = ";"))
+  ) |>
+  select(instance_id, actual_sig, n_bio, n, p_bio, nearest_bio, nearest_sig, dist)
+```
+
+```{r kiloA-hard-waterfall, fig.width=5, fig.height=5}
+# One figure per hard case: standard / actual / closest bio
+for (i in seq_len(nrow(hard))) {
+  row <- hard[i, ]
+  std <- kilo_a
+  act <- parse_sig(row$actual_sig)
+  bio <- closest_bio(act)
+
+  par(mfrow = c(3, 1), mar = c(0, 0, 2, 0))
+  plotWaterfall(std, sprintf("Kilo-A standard | inst %s", row$instance_id))
+  plotWaterfall(
+    act,
+    sprintf(
+      "actual (hard) %s | Bio mis %d/%d (%.0f%%)",
+      row$actual_sig, row$n_bio, row$n, 100 * row$p_bio
+    )
+  )
+  plotWaterfall(
+    bio$sig,
+    sprintf("closest Biological: %s (dist=%.0f)", bio$name, bio$dist)
+  )
+}
+```
+
+## Assess similarity of responses
+
+Visual distance: map each **band index** (1…5) to waterfall row coordinates (0–250 / 250–750 / 750–1750 Hz). Do **not** sort frequencies before comparing — sorting mixes bands and inflates distances when row slot counts differ.
+
+```{r sigdist-standards}
+scale_band_hz <- function(f) {
+  if (f <= 250) f / 250
+  else if (f <= 750) (f - 250) / 500 + 1.0
+  else (f - 750) / 1000 + 2.0
+}
+
+## Index-aligned visual distance (same band slot vs same band slot).
+sigdist <- function(sig1, sig2) {
+  if (length(sig1) != length(sig2)) {
+    stop("sigdist expects equal-length signatures, got ", length(sig1), " and ", length(sig2))
+  }
+  s1 <- vapply(sig1, scale_band_hz, numeric(1))
+  s2 <- vapply(sig2, scale_band_hz, numeric(1))
+  sqrt(sum((s1 - s2)^2))
+}
+
+distmatrix <- matrix(0, length(standards), length(standards),
+                     dimnames = list(std_names, std_names))
+for (i in seq_along(standards)) {
+  for (j in seq_along(standards)) {
+    distmatrix[i, j] <- sigdist(standards[[i]], standards[[j]])
+  }
+}
+round(distmatrix, 3)
+
+## Which biological template is nearer each Kilo standard?
+bio_only <- std_names[std_names %in% names(bio_templates)]
+near_kilo <- tibble(
+  template = bio_only,
+  d_kilo_a = distmatrix[bio_only, "kilo_a"],
+  d_kilo_b = distmatrix[bio_only, "kilo_b"],
+  nearer = if_else(d_kilo_a < d_kilo_b, "Kilo-A", if_else(d_kilo_b < d_kilo_a, "Kilo-B", "tie"))
+)
+near_kilo
+
+barplot(distmatrix["kilo_a", ], main = "Visual distance to Kilo-A prototype")
+barplot(distmatrix["kilo_b", ], main = "Visual distance to Kilo-B prototype")
+
+table(dat$vessel, dat$proto_sig)
+table(dat$vessel_name, dat$base_sig)
+```
+
+### Trial-level distances and ghost detector
+
+Distance from jittered `actual_sig` to each config prototype. `best_std` = nearest prototype. **Ghost** codes: 0 = nearest matches true class; 1 = Kilo-A trial but nearest ≠ Kilo-A; 2 = Kilo-B trial but nearest ≠ Kilo-B; 3 = Biological trial but nearest is a Kilo prototype.
+
+```{r alldists-ghost}
+stim_mat <- t(vapply(dat$actual_sig, parse_sig, numeric(5)))
+dist_to_std <- vapply(std_names, function(nm) {
+  vapply(seq_len(nrow(stim_mat)), function(i) sigdist(stim_mat[i, ], standards[[nm]]), numeric(1))
+}, numeric(nrow(dat)))
+
+alldists <- as_tibble(dist_to_std)
+colnames(alldists) <- paste0("d_", std_names)
+alldists$d_proto <- vapply(seq_len(nrow(dat)), function(i) {
+  p <- parse_sig(dat$proto_sig[i])
+  if (length(p) == 5) sigdist(stim_mat[i, ], p) else NA_real_
+}, numeric(1))
+
+alldists$best_std <- std_names[apply(alldists[, paste0("d_", std_names)], 1, which.min)]
+bio_lab <- vapply(dat$vessel_name, template_label, character(1))
+alldists$true_std <- case_when(
+  dat$vessel == "Kilo-A" ~ "kilo_a",
+  dat$vessel == "Kilo-B" ~ "kilo_b",
+  dat$vessel == "Biological" & bio_lab %in% std_names ~ bio_lab,
+  TRUE ~ NA_character_
+)
+
+alldists$correct <- dat$correct
+alldists$source <- dat$vessel
+alldists$ghost <- 0L
+alldists$ghost[alldists$source == "Kilo-A" & alldists$best_std != "kilo_a"] <- 1L
+alldists$ghost[alldists$source == "Kilo-B" & alldists$best_std != "kilo_b"] <- 2L
+alldists$ghost[alldists$source == "Biological" & alldists$best_std %in% c("kilo_a", "kilo_b")] <- 3L
+
+alldists |>
+  count(ghost, best_std, name = "n") |>
+  arrange(ghost, desc(n))
+
+aggregate(alldists$correct, list(alldists$ghost), mean)
+```
