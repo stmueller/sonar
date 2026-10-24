@@ -10,10 +10,10 @@
       "name": "Kilo-A",
       "sig": [
         40,
-        120,
+        140,
         310,
         1080,
-        1480
+        1560
       ],
       "show_thumbnail": 1
     },
@@ -33,39 +33,39 @@
           "sig": [
             40,
             90,
-            270,
-            1020,
+            310,
+            1080,
             1650
           ]
         },
         {
           "name": "dolphin pod",
           "sig": [
-            45,
-            185,
-            320,
-            1250,
-            1400
+            40,
+            190,
+            400,
+            1230,
+            1470
           ]
         },
         {
           "name": "whale",
           "sig": [
             40,
-            105,
-            430,
-            1270,
-            1510
+            90,
+            400,
+            1230,
+            1650
           ]
         },
         {
           "name": "school of whitefish",
           "sig": [
             40,
-            195,
-            450,
-            1300,
-            1670
+            190,
+            310,
+            1080,
+            1470
           ]
         },
         {
@@ -81,10 +81,10 @@
       "name": "Kilo-B",
       "sig": [
         40,
-        170,
+        140,
         400,
         1230,
-        1590
+        1560
       ],
       "show_thumbnail": 1
     }
@@ -270,8 +270,8 @@
         "jitter_trunc_sd": 1.8
       },
       "noise_profiles": [
-        { "jitter_sd": 5, "count": 14 },
-        { "jitter_sd": 20, "count": 13 }
+        { "jitter_sd": 10, "count": 14 },
+        { "jitter_sd": 30, "count": 13 }
       ],
       "show_thumbnails": 0,
       "feedback": "none",

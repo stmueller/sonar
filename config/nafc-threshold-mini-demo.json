@@ -8,7 +8,7 @@
     {
       "id": 2,
       "name": "Kilo-A",
-      "sig": [40, 120, 310, 1080, 1480],
+      "sig": [40, 140, 310, 1080, 1560],
       "show_thumbnail": 1
     },
     {
@@ -17,10 +17,10 @@
       "sig": [40, 50, 60, 70],
       "show_thumbnail": 0,
       "templates": [
-        { "name": "shrimp", "sig": [40, 90, 270, 1020, 1650] },
-        { "name": "dolphin pod", "sig": [45, 185, 320, 1250, 1400] },
-        { "name": "whale", "sig": [40, 105, 430, 1270, 1510] },
-        { "name": "school of whitefish", "sig": [40, 195, 450, 1300, 1670] },
+        { "name": "shrimp", "sig": [40, 90, 310, 1080, 1650] },
+        { "name": "dolphin pod", "sig": [40, 190, 400, 1230, 1470] },
+        { "name": "whale", "sig": [40, 90, 400, 1230, 1650] },
+        { "name": "school of whitefish", "sig": [40, 190, 310, 1080, 1470] },
         { "name": "unidentified biological", "kind": "random" }
       ],
       "outlier_label": "unidentified biological",
@@ -29,7 +29,7 @@
     {
       "id": 3,
       "name": "Kilo-B",
-      "sig": [40, 170, 400, 1230, 1590],
+      "sig": [40, 140, 400, 1230, 1560],
       "show_thumbnail": 1
     }
   ],
