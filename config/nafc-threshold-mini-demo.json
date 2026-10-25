@@ -36,13 +36,13 @@
   "blocks": [
     {
       "id": "block-threshold",
-      "label": "Threshold mini-demo",
+      "label": "Watch — Classification threshold",
       "rule_text": "Kilo-A | Biological | Kilo-B",
-      "instructions": "<h2>Classification threshold — mini demo</h2><br><hr><br>Short preview of the final study block. Contacts mix <b>low noise</b> (near-prototype Kilos) and <b>high noise</b> (often called Biological when far from a Kilo prototype).<br><br>About <b>80%</b> of contacts are Kilo-A or Kilo-B; the rest are biological foils. Classify each contact and rate confidence. <b>No trial feedback</b>; score updates at the end.<br><br>Reference signatures are hidden. Click to begin.",
-      "trials": 9,
+      "instructions": "<h2>Sonar Watch — Classification threshold</h2><br><hr><br>Final watch under <b>variable water conditions</b>  Classify each as Kilo-A, Biological, or Kilo-B.  There is <b>no trial-by-trial feedback</b>. Use confidence as before — points still use the same 4×confidence rule and update at the end of the block.<br><br><h3>Scoring reminder</h3><br><li>Correct: <b>+4 … +20</b><br><li>Incorrect: <b>−4 … −20</b><br><br>Click to begin.",
+      "trials": 30,
       "repetitions": 1,
       "randomseed": 2001,
-      "vessel_counts": [4, 1, 4],
+      "vessel_counts": [13, 4, 13],
       "response_mode": "choice",
       "signal_mode": "jittered",
       "signal_params": {
@@ -50,8 +50,8 @@
         "jitter_trunc_sd": 1.8
       },
       "noise_profiles": [
-        { "jitter_sd": 5, "count": 5 },
-        { "jitter_sd": 20, "count": 4 }
+        { "jitter_sd": 10, "count": 15 },
+        { "jitter_sd": 30, "count": 15 }
       ],
       "show_thumbnails": 0,
       "feedback": "none",
