@@ -140,9 +140,9 @@
       "repetitions": 2,
       "randomseed": 1003,
       "vessel_counts": [
-        8,
-        14,
-        8
+        10,
+        10,
+        10
       ],
       "response_mode": "choice",
       "signal_mode": "jittered",
@@ -179,11 +179,11 @@
       "instructions": "<h2>Sonar Watch — Regime 2</h2><br><hr><br>Reference signatures are <b>no longer shown</b>. Rely on what you have learned.<br><br>You still receive feedback after each trial (whether you were correct, and what the contact was). Keep using calibrated confidence — higher confidence means larger gains when right and larger losses when wrong.<br><br><h3>Scoring reminder</h3><br><li>Correct: <b>+4 … +20</b> (4 × confidence)<br><li>Incorrect: <b>−4 … −20</b><br><br>Click to continue.",
       "trials": 30,
       "repetitions": 2,
-      "randomseed": 1003,
+      "randomseed": 1004,
       "vessel_counts": [
-        8,
-        14,
-        8
+        10,
+        10,
+        10
       ],
       "response_mode": "choice",
       "signal_mode": "jittered",
@@ -221,11 +221,11 @@
       "instructions": "<h2>Sonar Watch — Regime 3</h2><br><hr><br>This is the most realistic watch: <b>no trial-by-trial feedback</b>. You will not be told whether each answer was correct.<br><br>Continue classifying contacts and rating confidence as before. Points still accumulate using the same confidence rule, but your <b>score updates only at the end of this block</b>.<br><br><h3>Scoring reminder</h3><br><li>Correct: <b>+4 … +20</b><br><li>Incorrect: <b>−4 … −20</b><br><li>Same confidence scale (1–5)<br><br>Click to begin the final regime.",
       "trials": 30,
       "repetitions": 2,
-      "randomseed": 1003,
+      "randomseed": 1005,
       "vessel_counts": [
-        8,
-        14,
-        8
+        10,
+        10,
+        10
       ],
       "response_mode": "choice",
       "signal_mode": "jittered",
@@ -258,11 +258,11 @@
       "id": "block-threshold",
       "label": "Watch — Classification threshold",
       "rule_text": "Kilo-A | Biological | Kilo-B",
-      "instructions": "<h2>Sonar Watch — Classification threshold</h2><br><hr><br>Final watch under <b>variable water conditions</b>: some contacts are nearly as clear as the prototypes you trained on; others are much noisier.<br><br>Most contacts are Kilo-A or Kilo-B. Classify each as Kilo-A, Biological, or Kilo-B. There is <b>no trial-by-trial feedback</b>. Use confidence as before — points still use the same 4×confidence rule and update at the end of the block.<br><br><h3>Scoring reminder</h3><br><li>Correct: <b>+4 … +20</b><br><li>Incorrect: <b>−4 … −20</b><br><br>Click to begin.",
-      "trials": 27,
+	"instructions": "<h2>Sonar Watch — Classification threshold</h2><br><hr><br>Final watch under <b>variable water conditions</b>  Classify each as Kilo-A, Biological, or Kilo-B.  There is <b>no trial-by-trial feedback</b>. Use confidence as before — points still use the same 4×confidence rule and update at the end of the block.<br><br><h3>Scoring reminder</h3><br><li>Correct: <b>+4 … +20</b><br><li>Incorrect: <b>−4 … −20</b><br><br>Click to begin.",
+      "trials": 30,
       "repetitions": 2,
       "randomseed": 2001,
-      "vessel_counts": [12, 3, 12],
+      "vessel_counts": [13, 4, 13],
       "response_mode": "choice",
       "signal_mode": "jittered",
       "signal_params": {
@@ -270,8 +270,8 @@
         "jitter_trunc_sd": 1.8
       },
       "noise_profiles": [
-        { "jitter_sd": 10, "count": 14 },
-        { "jitter_sd": 30, "count": 13 }
+        { "jitter_sd": 10, "count": 15 },
+        { "jitter_sd": 30, "count": 15 }
       ],
       "show_thumbnails": 0,
       "feedback": "none",
