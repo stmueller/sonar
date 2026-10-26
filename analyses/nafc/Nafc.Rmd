@@ -493,14 +493,28 @@ response_freq_lines <- function(data, response_code, called_label) {
 }
 
 ## Nominal waterfall row for ordinal band *i* (prototype slot on the called Kilo).
-slot_row <- function(band_idx, called_label) {
+nominal_slot_hz <- function(band_idx, called_label) {
   ref <- if (called_label == "Called Kilo-A") kilo_a else kilo_b
-  waterfall_row_label(ref[band_idx])
+  ref[band_idx]
+}
+
+slot_row <- function(band_idx, called_label) {
+  waterfall_row_label(nominal_slot_hz(band_idx, called_label))
+}
+
+## x within the nominal row for that ordinal band (stripe), not the row hz jumped to.
+x_in_nominal_row <- function(hz, nominal_hz) {
+  xmin <- ifelse(nominal_hz < 250, 0, ifelse(nominal_hz < 750, 250, 750))
+  xmax <- ifelse(nominal_hz < 250, 250, ifelse(nominal_hz < 750, 750, 1750))
+  (hz - xmin) / (xmax - xmin) * 100
 }
 
 add_slot_row <- function(df) {
   df |>
     mutate(
+      nominal_hz = map2_dbl(band_idx, called, nominal_slot_hz),
+      x = x_in_nominal_row(hz, nominal_hz),
+      display_y = waterfall_row_y(nominal_hz),
       row_slot = factor(
         map2_chr(band_idx, called, slot_row),
         levels = WATERFALL_ROW_LEVELS
@@ -508,16 +522,38 @@ add_slot_row <- function(df) {
     )
 }
 
+WATERFALL_Y_BREAKS <- c(1, 2, 3)
+WATERFALL_Y_LABELS <- c(
+  "high (750–1750 Hz)",
+  "mid (250–750 Hz)",
+  "low (0–250 Hz)"
+)
+
 ## One Gaussian (on within-row x, 0–100) per ordinal band, per called response.
-fit_stripe_gaussians <- function(df, peak_height = 0.52, x_grid = seq(0, 100, by = 0.25)) {
-  stats <- stripe_gaussian_stats(df)
+fit_stripe_gaussians <- function(
+    df,
+    stripe_half_height = 0.32,
+    x_grid = seq(0, 100, by = 0.25)
+) {
+  stats <- stripe_gaussian_stats(df) |>
+    mutate(
+      display_y = map2_dbl(band_idx, called, function(bi, cl) {
+        waterfall_row_y(nominal_slot_hz(bi, cl))
+      })
+    )
 
   stats |>
     reframe(
       x = x_grid,
-      y = peak_height * dnorm(x, mu, sigma) / pmax(max(dnorm(x, mu, sigma)), 1e-9),
-      .by = c(called, band_idx, row_slot, mu, sigma, n)
+      dens = dnorm(x, mu, sigma),
+      .by = c(called, band_idx, row_slot, mu, sigma, n, display_y)
     ) |>
+    group_by(called, band_idx, row_slot, display_y) |>
+    mutate(
+      y = display_y - stripe_half_height +
+        (2 * stripe_half_height) * dens / pmax(max(dens), 1e-9)
+    ) |>
+    ungroup() |>
     mutate(band_idx = factor(band_idx, levels = 1:5))
 }
 
@@ -533,12 +569,27 @@ stripe_gaussian_stats <- function(df) {
     mutate(sigma = pmax(sigma, 0.75))
 }
 
-plot_pooled_rug_gaussians <- function(rug_df, gauss_df) {
-  rug_df <- rug_df |> mutate(rug_y = 0.34)
-  ggplot(rug_df, aes(x = x, alpha = confidence, colour = called)) +
+plot_pooled_rug_gaussians <- function(rug_df, gauss_df, proto_a, proto_b) {
+  proto_lines <- bind_rows(
+    prototype_rug(proto_a, "Called Kilo-A"),
+    prototype_rug(proto_b, "Called Kilo-B")
+  ) |>
+    rename(display_y = row_y)
+
+  ggplot(rug_df, aes(x = x, alpha = confidence)) +
+    geom_hline(yintercept = WATERFALL_Y_BREAKS, colour = "grey85", linewidth = 0.25) +
     geom_segment(
-      aes(xend = x, y = rug_y - 0.26, yend = rug_y + 0.26),
-      linewidth = 0.45
+      data = proto_lines,
+      aes(xend = x, y = display_y - 0.38, yend = display_y + 0.38),
+      colour = "greenyellow",
+      linewidth = 1.0,
+      alpha = 0.75,
+      inherit.aes = FALSE
+    ) +
+    geom_segment(
+      aes(xend = x, y = display_y - 0.32, yend = display_y + 0.32),
+      colour = "darkgreen",
+      linewidth = 0.5
     ) +
     geom_line(
       data = gauss_df,
@@ -551,7 +602,7 @@ plot_pooled_rug_gaussians <- function(rug_df, gauss_df) {
       inherit.aes = FALSE,
       colour = "black",
       linewidth = 0.85,
-      alpha = 0.85
+      alpha = 0.9
     ) +
     scale_alpha_continuous(
       range = c(0.1, 0.7),
@@ -559,28 +610,29 @@ plot_pooled_rug_gaussians <- function(rug_df, gauss_df) {
       na.value = 0.2,
       name = "Confidence"
     ) +
-    scale_colour_manual(
-      values = c("Called Kilo-A" = "darkgreen", "Called Kilo-B" = "seagreen3"),
-      name = "Response"
-    ) +
     scale_linetype_discrete(name = "Ordinal band") +
-    scale_y_continuous(breaks = NULL, labels = NULL, limits = c(0, 1)) +
-    scale_x_continuous(limits = c(0, 100)) +
-    facet_grid(row_slot ~ called, scales = "free_y", space = "free_y") +
+    scale_y_continuous(
+      breaks = WATERFALL_Y_BREAKS,
+      labels = WATERFALL_Y_LABELS,
+      limits = c(0.5, 3.6)
+    ) +
+    scale_x_continuous(limits = c(0, 100), expand = c(0, 0)) +
+    facet_wrap(~called, ncol = 2) +
     labs(
-      title = "Kilo-A / Kilo-B responses: rugs + Gaussian fit per ordinal band",
-      subtitle = "Five Gaussians per panel (bands 1–5); x = within-row %; rugs alpha ∝ confidence",
-      x = "Within-row position (%)",
+      title = "Kilo-A / Kilo-B responses: 3-row waterfall + Gaussian per band",
+      subtitle = "Layout matches earlier rug plots; x in nominal stripe row; yellow = prototype",
+      x = "Position within row (0–100%)",
       y = NULL
     ) +
-    theme_minimal() +
-    theme(legend.position = "bottom", panel.grid.minor = element_blank())
+    theme_minimal(base_size = 11) +
+    theme(
+      legend.position = "bottom",
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_line(colour = "grey90", linewidth = 0.2)
+    )
 }
 
 plot_waterfall_rug <- function(obs_lines, proto_lines, title) {
-  row_breaks <- c(1, 2, 3)
-  row_labels <- c("high (750–1750 Hz)", "mid (250–750 Hz)", "low (0–250 Hz)")
-
   ggplot() +
     geom_segment(
       data = obs_lines,
@@ -606,8 +658,8 @@ plot_waterfall_rug <- function(obs_lines, proto_lines, title) {
       name = "Confidence"
     ) +
     scale_y_continuous(
-      breaks = row_breaks,
-      labels = row_labels,
+      breaks = WATERFALL_Y_BREAKS,
+      labels = WATERFALL_Y_LABELS,
       limits = c(0.5, 3.6)
     ) +
     scale_x_continuous(limits = c(0, 100), expand = c(0, 0)) +
@@ -667,7 +719,7 @@ rug_pool <- bind_rows(rug_a_obs, rug_b_obs) |>
 rug_stats <- stripe_gaussian_stats(rug_pool)
 rug_gauss <- fit_stripe_gaussians(rug_pool)
 
-plot_pooled_rug_gaussians(rug_pool, rug_gauss)
+plot_pooled_rug_gaussians(rug_pool, rug_gauss, kilo_a, kilo_b)
 
 rug_stats |> arrange(called, band_idx)
 ```
