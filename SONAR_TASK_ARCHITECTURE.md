@@ -50,12 +50,30 @@ Two display panels are available and can be used independently or together:
   // "sequence"— fixed trial sequence (signal_params.sequence list)
 
   "signal_params": {
-    "jitter_sd":   20,
+    "jitter_sd":   20,            // percent of narrowband row width (Hz span), not band f
+    "jitter_trunc_sd": 1.5,
     "n_noise_min": 1,  "n_noise_max": 3,
     "n_mimic":     2,
     "p_show":      0.75,
     "sequence":    []   // list of vessel IDs if signal_mode=="sequence"
   },
+
+  // Exact class counts in vessels[] order (preferred over vessel_rates).
+  // Builds a shuffled case list; sum becomes trials.
+  "vessel_counts": [5, 10, 5],
+
+  // How many times to present each base case (identical forced sig).
+  "repetitions": 2,
+
+  // Optional per-case noise profiles. When set, overrides block signal_params
+  // for listed fields; unspecified fields inherit the block. Each profile needs
+  // count = exact # of base cases (before repetitions). Sum(counts) must equal
+  // sum(vessel_counts) when both are set. Implies the case-list path.
+  // CSV visual_sd reflects the case jitter (via gCurrentJitter).
+  "noise_profiles": [
+    { "jitter_sd": 5,  "count": 12 },
+    { "jitter_sd": 20, "count": 13 }
+  ],
 
   "response_mode": "choice",
   // "choice"     — click one of N vessel thumbnails (or bearing sectors)
@@ -186,6 +204,13 @@ Two display panels are available and can be used independently or together:
   - `MakeMimicSig(baseSig, altSig, nMimic)`  (existing)
   - `MakeProbSig(baseSig, p_show)`           (existing)
   - `MakeComboSig(baseSig, sd, nMin, nMax)`  (new: jitter + noise)
+
+### Case list / scheduling
+- `BuildVesselIdSchedule(blockCfg, vessels)` — exact counts from `vessel_counts`, shuffled
+- `BuildNoiseProfileSchedule(blockCfg, nCases)` — exact counts from `noise_profiles`, shuffled
+- `BuildTrialCaseList(blockCfg, vessels)` — vessel + optional noise profile → forced `sig`
+- `ApplyTrialCase` / `ClearTrialCaseForce` — pin/restore vessel, sig, and per-case jitter (`gCurrentJitter` → CSV `visual_sd`)
+- `CopySignalParams` / `OverlaySignalParams` — inherit block params, overlay profile fields
 
 ### Display rendering
 - `RenderNarrowband(sig, display_objs)` — places stripes on waterfall, returns img list

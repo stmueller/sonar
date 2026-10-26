@@ -57,11 +57,22 @@ define TruncatedNormal(mean, sd, lo, hi)
 }
 
 
-## Percent → Hz SD for one band. Log display: fixed-Hz noise hit low bands harder;
-## proportional jitter keeps relative (visual) displacement more uniform across rows.
+## Waterfall row width (Hz) for narrowband display — must match RenderNarrowband.
+define NarrowbandRowWidthHz(f)
+{
+    rowW <- 1000
+    if(f < 250) { rowW <- 250 }
+    if(f >= 250 and f < 750) { rowW <- 500 }
+    return(rowW)
+}
+
+
+## pct → Hz SD: jitter is proportional to ROW width (visual span), not band frequency.
+## jitter_sd 10 → SD = 10% of row (25 Hz in row 1, 50 in row 2, 100 in row 3).
 define JitterSdHz(f, pct)
 {
-    sd <- Abs(f) * pct / 100.0
+    rowW <- NarrowbandRowWidthHz(f)
+    sd <- rowW * pct / 100.0
     if(sd < 0.5) { sd <- 0.5 }
     return(sd)
 }
@@ -98,7 +109,7 @@ define ValidateSignature(sig, minSep:15)
 
 ## Jitter each band with Normal(0, sdHz), truncated to ±truncSd·sdHz about the base
 ## (also clamped to the displayable 50–1750 Hz window). truncSd <= 0 defaults to 1.5.
-## sd is a PERCENT of band frequency (not fixed Hz) — e.g. 10 → ±10% of f.
+## sd is a PERCENT of the waterfall row width (Hz), not of band frequency — e.g. 10 → ±10% of row span.
 ## Does not reshape draws: ValidateSignature rejects order reversals or bands
 ## closer than minSep Hz (default 15) and redraws.
 define MakeJitteredSig(baseSig, sd, truncSd, minSep:15)
@@ -227,7 +238,7 @@ define MakeComboSig(baseSig, sd, nMin, nMax, truncSd, minSep:15)
 
 ## Generate a target sig: each base band shown with pShow probability + small jitter.
 ## Additional alpha bands may appear (leakage) at rate pLeak per missing band.
-## jitterSd is percent of band frequency (see MakeJitteredSig).
+## jitterSd is percent of waterfall row width (see JitterSdHz).
 define MakeTargetSig(baseSig, pShow, jitterSd, pLeak)
 {
     sig  <- []
@@ -273,7 +284,7 @@ define MakeTargetSig(baseSig, pShow, jitterSd, pLeak)
 
 ## Generate a foil sig: random bands, but alpha bands bleed in at rate pAlphaLeak.
 ## This means foils sometimes look partly like the target, raising task difficulty.
-## jitterSd is percent of band frequency (see MakeJitteredSig).
+## jitterSd is percent of waterfall row width (see JitterSdHz).
 define MakeFoilSig(alphaSig, nBands, pAlphaLeak, jitterSd)
 {
     sig  <- []
