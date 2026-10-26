@@ -709,8 +709,8 @@ rug_b_obs |>
   mutate(bands = trials * 5)
 ```
 
-```{r waterfall-rug-pooled, fig.height=5, fig.width=9}
-## Pooled rugs faceted by ordinal band row (prototype slot); Gaussian overlay per band_idx.
+```{r waterfall-rug-pooled, fig.height=5, fig.width=10}
+## Pooled: same 3-row y layout as block rugs; two panels (called A / B); Gaussians per ordinal band.
 rug_pool <- bind_rows(rug_a_obs, rug_b_obs) |>
   filter(block_id != "practice") |>
   mutate(trial_uid = paste(block_id, trial, sep = ":")) |>
