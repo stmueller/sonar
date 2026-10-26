@@ -580,14 +580,24 @@ plot_pooled_rug_gaussians <- function(rug_df, gauss_df, proto_a, proto_b) {
     geom_hline(yintercept = WATERFALL_Y_BREAKS, colour = "grey85", linewidth = 0.25) +
     geom_segment(
       data = proto_lines,
-      aes(xend = x, y = display_y - 0.38, yend = display_y + 0.38),
+      aes(
+        x = x,
+        xend = x,
+        y = display_y - 0.38,
+        yend = display_y + 0.38
+      ),
       colour = "greenyellow",
       linewidth = 1.0,
       alpha = 0.75,
       inherit.aes = FALSE
     ) +
     geom_segment(
-      aes(xend = x, y = display_y - 0.32, yend = display_y + 0.32),
+      aes(
+        x = x,
+        xend = x,
+        y = display_y - 0.32,
+        yend = display_y + 0.32
+      ),
       colour = "darkgreen",
       linewidth = 0.5
     ) +
