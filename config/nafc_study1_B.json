@@ -1,0 +1,310 @@
+{
+  "task_id": "nafc_study1_B",
+  "display": "narrowband",
+  "audio": false,
+  "response_input": "mouse",
+  "confidence_input": "mouse",
+  "vessels": [
+    {
+      "id": 2,
+      "name": "Kilo-A",
+      "sig": [
+        40,
+        140,
+        310,
+        1080,
+        1560
+      ],
+      "show_thumbnail": 1
+    },
+    {
+      "id": 1,
+      "name": "Biological",
+      "sig": [
+        40,
+        50,
+        60,
+        70
+      ],
+      "show_thumbnail": 0,
+      "templates": [
+        {
+          "name": "shrimp",
+          "sig": [
+            40,
+            90,
+            310,
+            1080,
+            1650
+          ]
+        },
+        {
+          "name": "dolphin pod",
+          "sig": [
+            40,
+            190,
+            400,
+            1230,
+            1470
+          ]
+        },
+        {
+          "name": "whale",
+          "sig": [
+            40,
+            90,
+            400,
+            1230,
+            1650
+          ]
+        },
+        {
+          "name": "school of whitefish",
+          "sig": [
+            40,
+            190,
+            310,
+            1080,
+            1470
+          ]
+        },
+        {
+          "name": "unidentified biological",
+          "kind": "random"
+        }
+      ],
+      "outlier_label": "unidentified biological",
+      "outlier_min_dist": 100
+    },
+    {
+      "id": 3,
+      "name": "Kilo-B",
+      "sig": [
+        40,
+        140,
+        400,
+        1230,
+        1560
+      ],
+      "show_thumbnail": 1
+    }
+  ],
+  "blocks": [
+    {
+      "id": "practice",
+      "label": "Practice",
+      "rule_text": "Kilo-A | Biological | Kilo-B",
+      "instructions": "<h2>Sonar Watch \u2014 Practice</h2><br><hr><br>You will classify each contact as one of three types:<br><li><b>Kilo-A</b> \u2014 older Kilo-877 submarine<br><li><b>Kilo-B</b> \u2014 newer Kilo-877 submarine<br><li><b>Biological</b> \u2014 sea life (shrimp, dolphin pod, whale, school of whitefish)<br><br>The two Kilos are dangerous and must be told apart. Their signatures are similar \u2014 look carefully. Some contacts are ordinary biologicals. Submarines were designed with <b>stealth</b> features that can look biological, so do not rely on a single band. The biologicals tend to have consistent signatures, but there are also unknown biologicals that don't look like anything.<br><br><h3>Scoring and confidence</h3><br>After each response, rate your confidence from <b>1 (guess)</b> to <b>5 (certain)</b>.<br><li>Correct answers earn <b>4 points \u00d7 confidence</b> (so <b>+4</b> at level 1 up to <b>+20</b> at level 5)<br><li>Incorrect answers <b>lose the same amount</b> (\u22124 to \u221220)<br><li>Higher confidence means larger gains when right and larger losses when wrong \u2014 use the full scale<br><br>You will see feedback after each trial in practice. Click to begin.",
+      "trials": 30,
+      "repetitions": 1,
+      "randomseed": 1006,
+      "vessel_counts": [
+        10,
+        10,
+        10
+      ],
+      "response_mode": "choice",
+      "signal_mode": "jittered",
+      "signal_params": {
+        "jitter_sd": 5,
+        "jitter_trunc_sd": 1.8
+      },
+      "feedback": "identity",
+      "collect_confidence": 1,
+      "confidence_levels": 5,
+      "isi": 800,
+      "scoring": "confidence",
+      "payoff_correct_by_conf": [
+        4,
+        8,
+        12,
+        16,
+        20
+      ],
+      "payoff_incorrect_by_conf": [
+        -4,
+        -8,
+        -12,
+        -16,
+        -20
+      ],
+      "feedback_keep_stim": 1,
+      "feedback_error_click": 1
+    },
+    {
+      "id": "block-type-1a",
+      "label": "Watch \u2014 Regime 1",
+      "rule_text": "Regime 1: With Feedback and Reference signatures",
+      "instructions": "<h2>Sonar Watch \u2014 Regime 1</h2><br><hr><br>Conditions are more realistic: frequency bands will often be slightly off. When unsure, make your best guess and give a <b>lower</b> confidence rating.<br><br> Some biologicals may be unfamiliar (\u201cunidentified biological\u201d); still classify them as Biological if that is the best fit.<br><br><h3>Scoring reminder</h3><br><li>Correct: <b>4 \u00d7 confidence</b> \u2192 <b>+4 \u2026 +20</b><br><li>Incorrect: same magnitude loss \u2192 <b>\u22124 \u2026 \u221220</b><br><li>Use the full 1\u20135 confidence range<br><br>Reference signatures remain available. Feedback after each trial. Click to continue.",
+      "trials": 30,
+      "repetitions": 2,
+      "randomseed": 1004,
+      "vessel_counts": [
+        10,
+        10,
+        10
+      ],
+      "response_mode": "choice",
+      "signal_mode": "jittered",
+      "signal_params": {
+        "jitter_sd": 10,
+        "jitter_trunc_sd": 1.8
+      },
+      "feedback": "identity",
+      "collect_confidence": 1,
+      "confidence_levels": 5,
+      "isi": 800,
+      "scoring": "confidence",
+      "payoff_correct_by_conf": [
+        4,
+        8,
+        12,
+        16,
+        20
+      ],
+      "payoff_incorrect_by_conf": [
+        -4,
+        -8,
+        -12,
+        -16,
+        -20
+      ],
+      "feedback_keep_stim": 1,
+      "feedback_error_click": 1
+    },
+    {
+      "id": "block-type-1b",
+      "label": "Watch \u2014 Regime 2 (no reference signatures)",
+      "rule_text": "Kilo-A | Biological | Kilo-B",
+      "instructions": "<h2>Sonar Watch \u2014 Regime 2</h2><br><hr><br>Reference signatures are <b>no longer shown</b>. Rely on what you have learned.<br><br>You still receive feedback after each trial (whether you were correct, and what the contact was). Keep using calibrated confidence \u2014 higher confidence means larger gains when right and larger losses when wrong.<br><br><h3>Scoring reminder</h3><br><li>Correct: <b>+4 \u2026 +20</b> (4 \u00d7 confidence)<br><li>Incorrect: <b>\u22124 \u2026 \u221220</b><br><br>Click to continue.",
+      "trials": 30,
+      "repetitions": 2,
+      "randomseed": 1005,
+      "vessel_counts": [
+        10,
+        10,
+        10
+      ],
+      "response_mode": "choice",
+      "signal_mode": "jittered",
+      "signal_params": {
+        "jitter_sd": 10,
+        "jitter_trunc_sd": 1.8
+      },
+      "show_thumbnails": 0,
+      "feedback": "identity",
+      "collect_confidence": 1,
+      "confidence_levels": 5,
+      "isi": 800,
+      "scoring": "confidence",
+      "payoff_correct_by_conf": [
+        4,
+        8,
+        12,
+        16,
+        20
+      ],
+      "payoff_incorrect_by_conf": [
+        -4,
+        -8,
+        -12,
+        -16,
+        -20
+      ],
+      "feedback_keep_stim": 1,
+      "feedback_error_click": 1
+    },
+    {
+      "id": "block-type-1c",
+      "label": "Watch \u2014 Regime 3 (no reference signatures, no feedback)",
+      "rule_text": "Kilo-A | Biological | Kilo-B",
+      "instructions": "<h2>Sonar Watch \u2014 Regime 3</h2><br><hr><br>This is the most realistic watch: <b>no trial-by-trial feedback</b>. You will not be told whether each answer was correct.<br><br>Continue classifying contacts and rating confidence as before. Points still accumulate using the same confidence rule, but your <b>score updates only at the end of this block</b>.<br><br><h3>Scoring reminder</h3><br><li>Correct: <b>+4 \u2026 +20</b><br><li>Incorrect: <b>\u22124 \u2026 \u221220</b><br><li>Same confidence scale (1\u20135)<br><br>Click to begin the final regime.",
+      "trials": 30,
+      "repetitions": 2,
+      "randomseed": 1003,
+      "vessel_counts": [
+        10,
+        10,
+        10
+      ],
+      "response_mode": "choice",
+      "signal_mode": "jittered",
+      "signal_params": {
+        "jitter_sd": 10,
+        "jitter_trunc_sd": 1.8
+      },
+      "show_thumbnails": 0,
+      "feedback": "none",
+      "collect_confidence": 1,
+      "confidence_levels": 5,
+      "isi": 800,
+      "scoring": "confidence",
+      "payoff_correct_by_conf": [
+        4,
+        8,
+        12,
+        16,
+        20
+      ],
+      "payoff_incorrect_by_conf": [
+        -4,
+        -8,
+        -12,
+        -16,
+        -20
+      ]
+    },
+    {
+      "id": "block-threshold",
+      "label": "Watch \u2014 Classification threshold",
+      "rule_text": "Kilo-A | Biological | Kilo-B",
+      "instructions": "<h2>Sonar Watch \u2014 Classification threshold</h2><br><hr><br>Final watch under <b>variable water conditions</b>  Classify each as Kilo-A, Biological, or Kilo-B.  There is <b>no trial-by-trial feedback</b>. Use confidence as before \u2014 points still use the same 4\u00d7confidence rule and update at the end of the block.<br><br><h3>Scoring reminder</h3><br><li>Correct: <b>+4 \u2026 +20</b><br><li>Incorrect: <b>\u22124 \u2026 \u221220</b><br><br>Click to begin.",
+      "trials": 30,
+      "repetitions": 2,
+      "randomseed": 2001,
+      "vessel_counts": [
+        13,
+        4,
+        13
+      ],
+      "response_mode": "choice",
+      "signal_mode": "jittered",
+      "signal_params": {
+        "jitter_sd": 10,
+        "jitter_trunc_sd": 1.8
+      },
+      "noise_profiles": [
+        {
+          "jitter_sd": 10,
+          "count": 15
+        },
+        {
+          "jitter_sd": 30,
+          "count": 15
+        }
+      ],
+      "show_thumbnails": 0,
+      "feedback": "none",
+      "collect_confidence": 1,
+      "confidence_levels": 5,
+      "isi": 800,
+      "scoring": "confidence",
+      "payoff_correct_by_conf": [
+        4,
+        8,
+        12,
+        16,
+        20
+      ],
+      "payoff_incorrect_by_conf": [
+        -4,
+        -8,
+        -12,
+        -16,
+        -20
+      ]
+    }
+  ],
+  "seed_plan": "B",
+  "seed_plan_note": "Latin-square row B: regime blocks keep fixed order (practice/threshold seeds unchanged); randomseeds on block-type-1a/1b/1c rotated from [1003,1004,1005]."
+}

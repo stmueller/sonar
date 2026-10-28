@@ -1,1 +1,45 @@
-task|askuser|Task configuration: name of params/*.json file (without .json), or 'askuser' to show interactive picker
+{
+  "test": "sonar-task",
+  "version": "1.0",
+  "description": "JSON-driven sonar decision-task simulator",
+  "parameters": [
+    {
+      "name": "task",
+      "type": "string",
+      "default": "askuser",
+      "description": "Config stem in config/ (without .json), or askuser for the picker. May also be a comma-separated list of stems; when multiple, taskPick chooses one (same rules as tasks)."
+    },
+    {
+      "name": "tasks",
+      "type": "string",
+      "default": "",
+      "description": "Optional comma-separated pool of config stems (e.g. nafc_study1_A,nafc_study1_B,nafc_study1_C). When non-empty, overrides task for config selection (askuser still works if task=askuser and tasks is empty). Empty = use task alone."
+    },
+    {
+      "name": "taskPick",
+      "type": "string",
+      "default": "random",
+      "options": ["random", "first", "subnum"],
+      "description": "How to choose among multiple stems in tasks or a comma-separated task list. random = uniform draw; first = always first stem; subnum = gSubNum mod N (1-based index). Ignored when only one stem."
+    },
+    {
+      "name": "useAudio",
+      "type": "integer",
+      "default": 0,
+      "description": "Looping bed + vessel stims (0/1)"
+    },
+    {
+      "name": "useWaterfallAnimation",
+      "type": "integer",
+      "default": 0,
+      "description": "Scroll waterfall during the response wait (0/1). Not wired yet."
+    },
+    {
+      "name": "responsemode",
+      "type": "string",
+      "default": "auto",
+      "options": ["auto", "keyboardShift", "keyboardSafe", "arrowLR", "mousebutton", "mousetarget", "userselect"],
+      "description": "How to answer RT trials (Simon, go/no-go). auto = shift keys native, Z/slash in browser. mousebutton = left/right click anywhere. mousetarget = click on-screen targets. Identification trials still click vessel thumbnails."
+    }
+  ]
+}

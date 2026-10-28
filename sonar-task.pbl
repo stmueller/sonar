@@ -1,7 +1,10 @@
 ## sonar-task.pbl  -- JSON-driven sonar decision-task simulator
 ## Cover story: narrowband waterfall / bearing display.
 ## Run from this directory:  ../pebl/bin/pebl2 sonar-task.pbl
-## Configs: config/*.json  (task param, or askuser picker)
+## Configs: config/*.json  (task / tasks / taskPick params, or askuser picker)
+##   task     — single stem, askuser, or comma-separated stems
+##   tasks    — optional pool (comma-separated); when set, overrides task for pick
+##   taskPick — random | first | subnum  (how to choose among multiple stems)
 ##
 ## Structure: Start → InitializeUI (display + audio) → loop RunBlock
 ##   RunBlock: SetupMode → trial loop (RunModeTrial) → TeardownMode
@@ -5572,7 +5575,7 @@ define BuildSimonRuleText(vessels)
 ## ============================================================
 
 ## Build a default signal_params object so blocks can omit fields.
-## jitter_sd: percent of each band frequency (not fixed Hz). See MakeJitteredSig.
+## jitter_sd: percent of narrowband row width (Hz). See JitterSdHz / MakeJitteredSig.
 define DefaultSignalParams()
 {
     p <- MakeCustomObject("sigparams")
@@ -7011,6 +7014,16 @@ define GenerateSonarReport(cfg, dataFile, vessels, trialRecs)
 
     FilePrint(htmlFile, H("Sonar Task Report", 1))
     FilePrint(htmlFile, P("Task: " + B(taskId)))
+    if(gChosenConfigStem != "")
+    {
+        FilePrint(htmlFile, P("Config file: " + B(gChosenConfigStem + ".json") +
+            " &nbsp;|&nbsp; pick=" + B(gTaskPickMode) +
+            " &nbsp;|&nbsp; pool=[" + gTaskPoolRaw + "]"))
+    }
+    if(gSeedPlan != "")
+    {
+        FilePrint(htmlFile, P("Seed plan (Latin-square row): " + B(gSeedPlan)))
+    }
     FilePrint(htmlFile, P("Participant: " + B(gSubNum)))
     FilePrint(htmlFile, P("Test Date: " + B(TimeStamp())))
     elapsedMin <- 0
@@ -7206,6 +7219,67 @@ define GenerateSonarReport(cfg, dataFile, vessels, trialRecs)
 
 
 ## ============================================================
+## CONFIG SELECTION (task / tasks / taskPick)
+## ============================================================
+
+## Split a comma-separated stem string into a cleaned list.
+## Also accepts PEBL list values from JSON list-typed params.
+define ParseTaskStems(raw)
+{
+    stems <- []
+    if(IsList(raw))
+    {
+        loop(item, raw)
+        {
+            s <- StripSpace(item + "")
+            if(s != "") { PushOnEnd(stems, s) }
+        }
+        return(stems)
+    }
+    s <- StripSpace(raw + "")
+    if(s == "") { return(stems) }
+    ## Single token with no comma → one stem
+    parts <- SplitString(s, ",")
+    loop(p, parts)
+    {
+        t <- StripSpace(p + "")
+        if(t != "") { PushOnEnd(stems, t) }
+    }
+    return(stems)
+}
+
+
+## Choose one stem from a pool. mode: random | first | subnum
+define PickTaskStem(stems, mode)
+{
+    n <- Length(stems)
+    if(n <= 0)
+    {
+        SignalFatalError("PickTaskStem: empty task pool")
+    }
+    if(n == 1) { return(First(stems)) }
+
+    m <- Lowercase(StripSpace(mode + ""))
+    if(m == "" or m == "random")
+    {
+        idx <- RandomDiscrete(n)
+        return(Nth(stems, idx))
+    }
+    if(m == "first")
+    {
+        return(First(stems))
+    }
+    if(m == "subnum")
+    {
+        ## Deterministic cycle assignment from subject code → 1..n
+        idx <- Mod(ToInteger(gSubNum), n) + 1
+        return(Nth(stems, idx))
+    }
+    SignalFatalError("taskPick must be random, first, or subnum (got: " + mode + ")")
+}
+
+
+## ============================================================
 ## START
 ## ============================================================
 
@@ -7222,21 +7296,39 @@ define Start(p)
 
 
     ## --- Load config via named parameter ---
-    ## Schema defines "task" parameter (default "askuser").
+    ## Schema: task / tasks / taskPick (+ audio / responsemode).
     ## Online: PEBLHub serves the par.json via its API; CreateParameters reads it.
     ## Local with --pfile: reads the specified par.json.
     ## Local without --pfile: reads params/sonar-task.pbl.par.json (default).
     parpairs <- [["task", "askuser"],
+                 ["tasks", ""],
+                 ["taskPick", "random"],
     	         ["useAudio",0],
 		 ["useWaterfallAnimation",0],
 		 ["responsemode","auto"]]
 		 
     gParams  <- CreateParameters(parpairs, gParamFile)
 
+    gChosenConfigStem <- ""
+    gTaskPickMode <- ""
+    gTaskPoolRaw <- ""
+    gSeedPlan <- ""
 
-   
     taskName <- gParams.task
-    if(taskName == "askuser")
+    tasksRaw <- ""
+    if(PropertyExists(gParams, "tasks")) { tasksRaw <- gParams.tasks }
+    pickMode <- "random"
+    if(PropertyExists(gParams, "taskPick")) { pickMode <- gParams.taskPick }
+    gTaskPickMode <- pickMode + ""
+
+    ## Prefer explicit tasks pool; else allow comma-list in task.
+    pool <- ParseTaskStems(tasksRaw)
+    if(Length(pool) == 0 and taskName != "askuser")
+    {
+        pool <- ParseTaskStems(taskName)
+    }
+
+    if(taskName == "askuser" and Length(pool) == 0)
     {
         allFiles  <- GetDirectoryListing("config")
         jsonFiles <- []
@@ -7259,10 +7351,30 @@ define Start(p)
             PushOnEnd(fullPaths, "config/" + f)
         }
         cfgPath <- PickConfigFile(jsonFiles, fullPaths, gWin)
+        ## Stem without path / .json for logging
+        parts <- SplitString(cfgPath, "/")
+        leaf <- Nth(parts, Length(parts))
+        flen <- StringLength(leaf)
+        if(flen > 5)
+        {
+            gChosenConfigStem <- SubString(leaf, 1, flen - 5)
+        } else {
+            gChosenConfigStem <- leaf
+        }
+        gTaskPoolRaw <- "(askuser)"
+        gTaskPickMode <- "askuser"
     } else {
-        cfgPath <- "config/" + taskName + ".json"
+        if(Length(pool) == 0)
+        {
+            SignalFatalError("No task / tasks config stems specified")
+        }
+        gTaskPoolRaw <- ConcatenateList(pool, ",")
+        chosen <- PickTaskStem(pool, pickMode)
+        gChosenConfigStem <- chosen
+        cfgPath <- "config/" + chosen + ".json"
     }
 
+    Print("Config pool: [" + gTaskPoolRaw + "] pick=" + gTaskPickMode + " → " + gChosenConfigStem)
     Print("Loading config: " + cfgPath)
     if(FileExists(cfgPath))
     {
@@ -7273,6 +7385,7 @@ define Start(p)
 
 
     taskId <- cfg.task_id
+    if(PropertyExists(cfg, "seed_plan")) { gSeedPlan <- cfg.seed_plan + "" }
 
     gTaskDisplay <- "narrowband"
     if(PropertyExists(cfg, "display"))
@@ -7302,6 +7415,15 @@ define Start(p)
     ## --- Data file ---
     dataHeader <- "subnum,task_id,block_id,response_mode,trial,vessel_id,vessel_name,response,correct,outcome,points,signal_mode,rt_ms,rt2_ms,abstime,base_sig,actual_sig,instance_id,n_shown,n_extra,n_missing,bearing,congruent,reported_correct,n_consec,n_reversals,correct_vessel,confidence,channel,visual_sd,audio_gain,visual_level,audio_level"
     dataFile <- GetNewDataFile(gSubNum, gWin, "sonar-task", "csv", dataHeader)
+
+    ## Session-meta row: which config/plan was chosen (does not change column schema).
+    ## block_id=__session__; response_mode=config_pick; vessel_name=stem; response=pickMode;
+    ## outcome=seed_plan; signal_mode=pool list.
+    metaRow <- [gSubNum, taskId, "__session__", "config_pick",
+                0, "", gChosenConfigStem, gTaskPickMode, "", gSeedPlan, "",
+                gTaskPoolRaw, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]
+    FilePrint(dataFile, ConcatenateList(metaRow, ","))
+    Print("Logged config_pick: stem=" + gChosenConfigStem + " plan=" + gSeedPlan + " mode=" + gTaskPickMode)
 
 
     ## --- Click-to-begin label ---

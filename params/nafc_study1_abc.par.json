@@ -1,0 +1,7 @@
+{
+  "tasks": "nafc_study1_A,nafc_study1_B,nafc_study1_C",
+  "taskPick": "random",
+  "useAudio": 0,
+  "useWaterfallAnimation": 0,
+  "responsemode": "auto"
+}
